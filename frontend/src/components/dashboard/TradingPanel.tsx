@@ -12,12 +12,14 @@ interface Position {
   id: string;
   symbol: string;
   side: string;
-  size: number;
+  size?: number;
+  volume?: number;
   entry_price: number;
   current_price: number;
   stop_loss: number | null;
   take_profit: number | null;
-  unrealized_pnl: number;
+  unrealized_pnl?: number;
+  profit?: number;
 }
 
 interface PaperAccount {
@@ -137,10 +139,11 @@ export function TradingPanel() {
       });
       const data = await res.json();
       if (data.success) {
-        setMsg(`${orderSide.toUpperCase()} ${symbol} ${size} @ $${data.order.filled_price.toLocaleString()}`);
-        setAccount(data.account);
+        const price = data.price || data.order?.filled_price || "";
+        setMsg(`${orderSide.toUpperCase()} ${symbol} ${size} lots${price ? ` @ $${Number(price).toLocaleString()}` : ""} — Order #${data.order_id || ""}`);
         setSl("");
         setTp("");
+        fetchAccount();
       } else {
         setMsg(data.error || "Order failed");
       }
@@ -241,11 +244,11 @@ export function TradingPanel() {
                   {p.side.toUpperCase()}
                 </Badge>
                 <span className="font-mono text-white text-sm">{p.symbol}</span>
-                <span className="text-xs text-zinc-500">{p.size} @ ${p.entry_price.toLocaleString()}</span>
+                <span className="text-xs text-zinc-500">{p.volume || p.size} @ ${p.entry_price.toLocaleString()}</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`font-mono text-sm font-bold ${pnlColor(p.unrealized_pnl)}`}>
-                  {p.unrealized_pnl >= 0 ? "+" : ""}${p.unrealized_pnl.toFixed(2)}
+                <span className={`font-mono text-sm font-bold ${pnlColor(p.profit ?? p.unrealized_pnl ?? 0)}`}>
+                  {(p.profit ?? p.unrealized_pnl ?? 0) >= 0 ? "+" : ""}${(p.profit ?? p.unrealized_pnl ?? 0).toFixed(2)}
                 </span>
                 <button onClick={() => closePos(p.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
                   {t.close}
