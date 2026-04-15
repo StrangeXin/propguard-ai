@@ -11,6 +11,7 @@ from app.services.auth import register_user, login_user, verify_token, update_us
 from app.services.payments import create_checkout_session, handle_stripe_webhook
 
 from app.rules.engine import evaluate_compliance, list_available_firms, load_firm_rules
+from app.services.trading_stats import calculate_challenge_progress
 from app.services.broker import BrokerAPIClient
 from app.services.alerts import process_compliance_alerts
 from app.services.telegram_bot import (
@@ -253,6 +254,24 @@ async def get_briefing(account_id: str, firm_name: str, account_size: int):
 
     import json as _json
     return _json.loads(_json.dumps(briefing, default=str))
+
+
+@router.get("/api/accounts/{account_id}/challenge-progress")
+async def get_challenge_progress(account_id: str, firm_name: str, account_size: int):
+    """Get challenge progress: profit target, drawdown usage, trading days."""
+    account_state = await broker.get_account_state(account_id, firm_name, account_size)
+    if account_state is None:
+        return {"status": "connecting"}
+
+    try:
+        firm_rules = load_firm_rules(firm_name)
+    except FileNotFoundError:
+        return {"error": f"Unknown firm: {firm_name}"}
+
+    progress = calculate_challenge_progress(account_state, firm_rules)
+
+    import json as _json
+    return _json.loads(_json.dumps(progress, default=str))
 
 
 ## ── Position Calculator ─────────────────────────────────────────

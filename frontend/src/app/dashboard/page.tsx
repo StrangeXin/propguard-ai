@@ -15,6 +15,7 @@ import { PositionCalculator } from "@/components/dashboard/PositionCalculator";
 import { KlineChart } from "@/components/dashboard/KlineChart";
 import { AlertHistory } from "@/components/dashboard/AlertHistory";
 import { AccountManager } from "@/components/dashboard/AccountManager";
+import { ChallengeProgress } from "@/components/dashboard/ChallengeProgress";
 import { LocaleSwitcher } from "@/components/dashboard/LocaleSwitcher";
 import {
   Select,
@@ -120,6 +121,8 @@ export default function Dashboard() {
       {account && compliance && (
         <>
           <AccountHeader account={account} overallStatus={compliance.overall_status} firmName={firmName} accountSize={accountSize} />
+
+          <ChallengeProgress accountId={accountId} firmName={firmName} accountSize={accountSize} />
 
           <div className="space-y-3">
             <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">
