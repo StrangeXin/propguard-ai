@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { AccountState, ComplianceReport } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const POLL_INTERVAL = 3000;
+const WS_MAX_RETRIES = 5;
 
 interface UseComplianceOptions {
   accountId: string;
@@ -35,20 +37,18 @@ export function useCompliance({
   const [brokerConnecting, setBrokerConnecting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const pollTimer = useRef<NodeJS.Timeout | null>(null);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
   const intentionalClose = useRef(false);
-  const usingPolling = useRef(false);
-  const wsFailCount = useRef(0);
+  const wsRetries = useRef(0);
+  const modeRef = useRef<"ws" | "poll">("ws");
 
-  // HTTP polling fallback
-  const poll = useCallback(async () => {
-    if (!enabled || !accountId) return;
+  // REST poll
+  const fetchOnce = useCallback(async () => {
     try {
       const res = await fetch(
         `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}`
       );
       const data = await res.json();
-
       if (data.status === "connecting") {
         setBrokerConnecting(true);
       } else if (data.account) {
@@ -60,32 +60,37 @@ export function useCompliance({
         setCompliance(data.compliance);
       }
     } catch {
-      // silently retry
+      // silent
     }
-  }, [accountId, firmName, accountSize, enabled]);
+  }, [accountId, firmName, accountSize]);
 
-  const startPolling = useCallback(() => {
-    if (pollTimer.current) return;
-    usingPolling.current = true;
-    poll(); // immediate first fetch
-    pollTimer.current = setInterval(poll, 3000);
-  }, [poll]);
+  const startPoll = useCallback(() => {
+    if (pollRef.current) return;
+    modeRef.current = "poll";
+    fetchOnce();
+    pollRef.current = setInterval(fetchOnce, POLL_INTERVAL);
+  }, [fetchOnce]);
 
-  const stopPolling = () => {
-    if (pollTimer.current) {
-      clearInterval(pollTimer.current);
-      pollTimer.current = null;
-    }
-    usingPolling.current = false;
+  const stopPoll = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   };
 
-  // WebSocket connection
+  const cleanup = () => {
+    stopPoll();
+    if (wsRef.current) {
+      intentionalClose.current = true;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  };
+
+  // WebSocket
   const connectWs = useCallback(() => {
     if (!enabled || !accountId) return;
 
-    // If WS failed 3+ times, stay on polling
-    if (wsFailCount.current >= 3) {
-      startPolling();
+    if (wsRetries.current >= WS_MAX_RETRIES) {
+      // Give up WS, use polling permanently
+      startPoll();
       return;
     }
 
@@ -95,23 +100,14 @@ export function useCompliance({
     try {
       const ws = new WebSocket(url);
       wsRef.current = ws;
-
-      const wsTimeout = setTimeout(() => {
-        // If WS doesn't open within 5 seconds, fallback to polling
-        if (ws.readyState !== WebSocket.OPEN) {
-          ws.close();
-          wsFailCount.current += 1;
-          startPolling();
-        }
-      }, 5000);
+      modeRef.current = "ws";
 
       ws.onopen = () => {
-        clearTimeout(wsTimeout);
         setConnected(true);
         setError(null);
         setReconnecting(false);
-        wsFailCount.current = 0;
-        stopPolling(); // stop polling if WS connects
+        wsRetries.current = 0;
+        stopPoll();
       };
 
       ws.onmessage = (event) => {
@@ -124,64 +120,45 @@ export function useCompliance({
           } else if (data.type === "broker_connecting") {
             setBrokerConnecting(true);
           }
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
       };
 
       ws.onclose = () => {
-        clearTimeout(wsTimeout);
-        setConnected(false);
         wsRef.current = null;
-
         if (intentionalClose.current) {
           intentionalClose.current = false;
           return;
         }
+        setConnected(false);
+        wsRetries.current += 1;
 
-        wsFailCount.current += 1;
-        // Fallback to polling after WS fails
-        startPolling();
+        if (wsRetries.current >= WS_MAX_RETRIES) {
+          // Switch to polling
+          startPoll();
+        } else {
+          // Retry WS with backoff
+          setReconnecting(true);
+          const delay = Math.min(1000 * Math.pow(2, wsRetries.current), 15000);
+          setTimeout(connectWs, delay);
+        }
       };
 
       ws.onerror = () => {
-        clearTimeout(wsTimeout);
-        wsFailCount.current += 1;
+        // onclose will fire after this
       };
     } catch {
-      // WebSocket constructor can throw in some environments
-      wsFailCount.current += 1;
-      startPolling();
+      wsRetries.current += 1;
+      startPoll();
     }
-  }, [accountId, firmName, accountSize, enabled, startPolling]);
+  }, [accountId, firmName, accountSize, enabled, startPoll]);
 
   useEffect(() => {
-    // Cleanup previous
-    if (pollTimer.current) {
-      clearInterval(pollTimer.current);
-      pollTimer.current = null;
-    }
-    if (wsRef.current) {
-      intentionalClose.current = true;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    // Reset WS fail count on param change
-    wsFailCount.current = 0;
-    usingPolling.current = false;
-
-    // Try WebSocket first, auto-fallback to polling
+    cleanup();
+    wsRetries.current = 0;
+    modeRef.current = "ws";
     connectWs();
 
-    return () => {
-      stopPolling();
-      if (wsRef.current) {
-        intentionalClose.current = true;
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
+    return cleanup;
   }, [connectWs]);
 
   return { account, compliance, connected, error, reconnecting, brokerConnecting };
