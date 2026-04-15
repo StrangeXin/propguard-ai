@@ -1,0 +1,32 @@
+{"ts":"2026-04-15T01:25:56.710Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":83,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:26:19.230Z","cmd":"screenshot","args":"/tmp/propguard-dashboard.png","origin":"about:blank","durationMs":38,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:26:40.535Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":104,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:26:40.695Z","cmd":"wait","args":"3000","origin":"http://localhost:3001/","durationMs":6,"status":"error","hasCookies":false,"mode":"launched","error":"for: Error while parsing css selector \"3000\". Did you mean to CSS.escape it?\nCall log:\n\u001b[2m  - waiting for 3000 to be visible\u001b[22m\n"}
+{"ts":"2026-04-15T01:26:40.793Z","cmd":"screenshot","args":"/tmp/propguard-2.png","origin":"http://localhost:3001/","durationMs":52,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:26:52.291Z","cmd":"console","args":"","origin":"http://localhost:3001/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:27:59.844Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":101,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:28:04.000Z","cmd":"screenshot","args":"/tmp/propguard-3.png","origin":"http://localhost:3001/","durationMs":90,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:58:18.792Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":143,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:58:22.907Z","cmd":"screenshot","args":"/tmp/pg-kline.png","origin":"http://localhost:3001/","durationMs":64,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T01:58:29.812Z","cmd":"console","args":"","origin":"http://localhost:3001/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T02:08:43.572Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":127,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T02:08:48.772Z","cmd":"screenshot","args":"/tmp/pg-realdata.png","origin":"http://localhost:3001/","durationMs":116,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T05:51:34.077Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":269,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T05:51:39.285Z","cmd":"screenshot","args":"/tmp/pg-realbroker.png","origin":"http://localhost:3001/","durationMs":124,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T05:55:33.553Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":138,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T05:55:37.765Z","cmd":"screenshot","args":"/tmp/pg-live-position.png","origin":"http://localhost:3001/","durationMs":131,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:24.643Z","cmd":"click","args":"button:has-text('ftmo')","origin":"about:blank","durationMs":35015,"status":"error","hasCookies":false,"mode":"launched","error":"click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\\'ftmo\\')')\u001b[22m\n"}
+{"ts":"2026-04-15T06:55:27.160Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":180,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:30.250Z","cmd":"click","args":"button:has-text('中文')","origin":"http://localhost:3001/","durationMs":39,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:30.818Z","cmd":"click","args":"button:has-text('ftmo')","origin":"http://localhost:3001/","durationMs":23,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:31.274Z","cmd":"click","args":"div[role='option']:has-text('Breakout')","origin":"http://localhost:3001/","durationMs":11057,"status":"error","hasCookies":false,"mode":"launched","error":"click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('div[role=\\'option\\']:has-text(\\'Breakout\\')')\u001b[22m\n"}
+{"ts":"2026-04-15T06:55:31.441Z","cmd":"click","args":"div[role='option']:has-text('Breakout')","origin":"http://localhost:3001/","durationMs":72,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:39.351Z","cmd":"screenshot","args":"/tmp/pg-zh-breakout.png","origin":"about:blank","durationMs":69,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:39.363Z","cmd":"screenshot","args":"/tmp/pg-zh-full2.png","origin":"about:blank","durationMs":44,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:55:59.467Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":70,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:56:52.441Z","cmd":"click","args":"button:has-text('EN')","origin":"about:blank","durationMs":35015,"status":"error","hasCookies":false,"mode":"launched","error":"click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\\'EN\\')')\u001b[22m\n"}
+{"ts":"2026-04-15T06:57:02.055Z","cmd":"click","args":"button:has-text('中文')","origin":"about:blank","durationMs":14578,"status":"error","hasCookies":false,"mode":"launched","error":"click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\\'中文\\')')\u001b[22m\n"}
+{"ts":"2026-04-15T06:57:05.983Z","cmd":"scroll","args":"down","origin":"about:blank","durationMs":4,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:57:07.053Z","cmd":"screenshot","args":"/tmp/pg-zh-final.png --full-page","origin":"about:blank","durationMs":3,"status":"error","hasCookies":false,"mode":"launched","error":"Unknown screenshot flag: --full-page"}
+{"ts":"2026-04-15T06:58:23.440Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":139,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T06:58:26.508Z","cmd":"console","args":"","origin":"http://localhost:3001/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}

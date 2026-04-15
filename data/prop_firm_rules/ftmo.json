@@ -1,0 +1,96 @@
+{
+  "firm_name": "FTMO",
+  "version": 1,
+  "effective_date": "2026-04-14",
+  "website": "https://ftmo.com",
+  "description": "Global forex/indices/commodities prop firm. 2-step evaluation (Challenge + Verification). No time limit.",
+  "markets": ["forex", "indices", "commodities", "crypto"],
+  "evaluation_type": "2-step",
+  "accounts": [
+    {
+      "size": 10000,
+      "currency": "USD",
+      "challenge_fee": 155,
+      "profit_target_phase1_pct": 10,
+      "profit_target_phase2_pct": 5
+    },
+    {
+      "size": 25000,
+      "currency": "USD",
+      "challenge_fee": 250,
+      "profit_target_phase1_pct": 10,
+      "profit_target_phase2_pct": 5
+    },
+    {
+      "size": 50000,
+      "currency": "USD",
+      "challenge_fee": 345,
+      "profit_target_phase1_pct": 10,
+      "profit_target_phase2_pct": 5
+    },
+    {
+      "size": 100000,
+      "currency": "USD",
+      "challenge_fee": 540,
+      "profit_target_phase1_pct": 10,
+      "profit_target_phase2_pct": 5
+    },
+    {
+      "size": 200000,
+      "currency": "USD",
+      "challenge_fee": 1080,
+      "profit_target_phase1_pct": 10,
+      "profit_target_phase2_pct": 5
+    }
+  ],
+  "rules": [
+    {
+      "type": "daily_loss",
+      "value": 5,
+      "unit": "percent_of_initial_balance",
+      "description": "Maximum daily loss is 5% of initial account balance. Resets at midnight CET. Includes both closed P/L and floating P/L (equity-based), plus commissions and swaps.",
+      "calculation_base": "equity",
+      "reset_time": "00:00 CET",
+      "breach_action": "account_violation"
+    },
+    {
+      "type": "max_drawdown",
+      "value": 10,
+      "unit": "percent_of_initial_balance",
+      "description": "Account equity cannot drop more than 10% below initial starting balance at any point. Static (non-trailing) drawdown.",
+      "trailing": false,
+      "calculation_base": "initial_balance",
+      "breach_action": "account_violation"
+    },
+    {
+      "type": "min_trading_days",
+      "value": 4,
+      "unit": "calendar_days",
+      "description": "Must trade on at least 4 calendar days during each phase."
+    },
+    {
+      "type": "time_limit",
+      "value": null,
+      "unit": "days",
+      "description": "No time limit. Traders can take as long as needed to reach profit target."
+    },
+    {
+      "type": "news_restriction",
+      "value": true,
+      "unit": "boolean",
+      "description": "On standard accounts, traders cannot open or close trades around high-impact news events. Must be aware of economic calendar.",
+      "applies_to": "standard_accounts_only"
+    }
+  ],
+  "profit_split": {
+    "base": 80,
+    "max": 90,
+    "unit": "percent",
+    "scaling": "Performance-based scaling up to 90%"
+  },
+  "sources": [
+    "https://ftmo.com/en/trading-objectives/",
+    "https://academy.ftmo.com/lesson/maximum-daily-loss/",
+    "https://academy.ftmo.com/lesson/maximum-loss/"
+  ]
+}

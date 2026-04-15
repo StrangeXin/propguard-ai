@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Prop Firm Rule Set",
+  "description": "Schema for prop firm challenge/evaluation rules used by the AI risk management engine",
+  "type": "object",
+  "required": ["firm_name", "version", "effective_date", "markets", "rules"],
+  "properties": {
+    "firm_name": {
+      "type": "string",
+      "description": "Official name of the prop firm"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Rule version number, incremented on each update"
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date this rule set was last verified (YYYY-MM-DD)"
+    },
+    "website": {
+      "type": "string",
+      "format": "uri"
+    },
+    "description": {
+      "type": "string"
+    },
+    "markets": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["forex", "futures", "indices", "commodities", "crypto", "stocks"]
+      }
+    },
+    "evaluation_type": {
+      "type": "string",
+      "enum": ["1-step", "2-step", "1-step_and_2-step", "instant"]
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["size", "currency"],
+        "properties": {
+          "size": { "type": "integer" },
+          "currency": { "type": "string" }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "description"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "daily_loss",
+              "max_drawdown",
+              "min_trading_days",
+              "time_limit",
+              "news_restriction",
+              "position_size",
+              "trading_hours",
+              "leverage",
+              "profit_target",
+              "consistency",
+              "overnight_holding"
+            ]
+          },
+          "value": {
+            "description": "Rule value (number, boolean, or null if not applicable)"
+          },
+          "value_by_account": {
+            "type": "object",
+            "description": "Rule values that differ by account size"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "trailing": {
+            "type": "boolean",
+            "description": "Whether drawdown is trailing (moves up with equity)"
+          },
+          "calculation_base": {
+            "type": "string",
+            "enum": ["equity", "balance", "initial_balance", "equity_high_watermark"]
+          },
+          "breach_action": {
+            "type": "string",
+            "enum": ["account_violation", "liquidation_and_pause", "warning", "none"]
+          }
+        }
+      }
+    },
+    "profit_split": {
+      "type": "object",
+      "properties": {
+        "base": { "type": "integer" },
+        "max": { "type": "integer" },
+        "unit": { "type": "string" }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "type": "string", "format": "uri" },
+      "description": "URLs where these rules were verified"
+    }
+  }
+}

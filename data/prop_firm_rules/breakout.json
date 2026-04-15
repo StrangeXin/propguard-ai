@@ -1,0 +1,141 @@
+{
+  "firm_name": "Breakout",
+  "version": 1,
+  "effective_date": "2026-04-14",
+  "website": "https://www.breakoutprop.com",
+  "description": "Crypto-native prop firm. 1-step and 2-step evaluations. Supports BTC, ETH, and altcoins with leverage.",
+  "markets": ["crypto"],
+  "evaluation_type": "1-step_and_2-step",
+  "accounts": [
+    {
+      "size": 5000,
+      "currency": "USD",
+      "evaluation": "1-step",
+      "profit_target_pct": 10,
+      "max_drawdown_pct": 6,
+      "drawdown_type": "static"
+    },
+    {
+      "size": 10000,
+      "currency": "USD",
+      "evaluation": "1-step",
+      "profit_target_pct": 10,
+      "max_drawdown_pct": 6,
+      "drawdown_type": "static"
+    },
+    {
+      "size": 25000,
+      "currency": "USD",
+      "evaluation": "1-step",
+      "profit_target_pct": 10,
+      "max_drawdown_pct": 6,
+      "drawdown_type": "static"
+    },
+    {
+      "size": 50000,
+      "currency": "USD",
+      "evaluation": "1-step",
+      "profit_target_pct": 10,
+      "max_drawdown_pct": 6,
+      "drawdown_type": "static"
+    },
+    {
+      "size": 100000,
+      "currency": "USD",
+      "evaluation": "1-step",
+      "profit_target_pct": 10,
+      "max_drawdown_pct": 6,
+      "drawdown_type": "static"
+    },
+    {
+      "size": 5000,
+      "currency": "USD",
+      "evaluation": "2-step",
+      "profit_target_phase1_pct": 5,
+      "profit_target_phase2_pct": 10,
+      "max_drawdown_pct": null,
+      "drawdown_type": "trailing"
+    },
+    {
+      "size": 50000,
+      "currency": "USD",
+      "evaluation": "2-step",
+      "profit_target_phase1_pct": 5,
+      "profit_target_phase2_pct": 10,
+      "max_drawdown_pct": null,
+      "drawdown_type": "trailing"
+    },
+    {
+      "size": 100000,
+      "currency": "USD",
+      "evaluation": "2-step",
+      "profit_target_phase1_pct": 5,
+      "profit_target_phase2_pct": 10,
+      "max_drawdown_pct": null,
+      "drawdown_type": "trailing"
+    }
+  ],
+  "rules": [
+    {
+      "type": "max_drawdown",
+      "value": 6,
+      "unit": "percent",
+      "description": "1-step challenge: 6% maximum drawdown, static (non-trailing). 2-step challenge: trailing drawdown.",
+      "trailing": false,
+      "trailing_note": "1-step = static, 2-step = trailing",
+      "calculation_base": "initial_balance",
+      "breach_action": "account_violation"
+    },
+    {
+      "type": "daily_loss",
+      "value": null,
+      "unit": "percent",
+      "description": "Breakout does not enforce a separate daily loss limit. Only the overall max drawdown applies.",
+      "has_daily_limit": false
+    },
+    {
+      "type": "time_limit",
+      "value": null,
+      "unit": "days",
+      "description": "No minimum or maximum time limits. Trade at your own pace."
+    },
+    {
+      "type": "min_trading_days",
+      "value": null,
+      "unit": "days",
+      "description": "No minimum trading days requirement."
+    },
+    {
+      "type": "leverage",
+      "value_by_asset": {
+        "BTC": 5,
+        "ETH": 5,
+        "altcoins": 2
+      },
+      "unit": "multiplier",
+      "description": "Up to 5x leverage on BTC and ETH, 2x on altcoins."
+    },
+    {
+      "type": "news_restriction",
+      "value": false,
+      "unit": "boolean",
+      "description": "No news trading restrictions. No consistency rules."
+    }
+  ],
+  "profit_split": {
+    "base": 80,
+    "max": 90,
+    "unit": "percent",
+    "scaling": "90% available as paid add-on"
+  },
+  "payout": {
+    "method": "USDC on Ethereum",
+    "processing_time": "24 hours",
+    "type": "on-demand"
+  },
+  "sources": [
+    "https://www.breakoutprop.com/",
+    "https://velotrade.com/blog/best-crypto-prop-firms",
+    "https://www.cryptoninjas.net/crypto/best-prop-firms/"
+  ]
+}
