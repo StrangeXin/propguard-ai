@@ -100,39 +100,52 @@ async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name:
     """
     await ws_manager.connect(websocket, account_id)
 
+    import json
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         while True:
-            account_state = await broker.get_account_state(account_id, firm_name, account_size)
+            try:
+                account_state = await broker.get_account_state(account_id, firm_name, account_size)
 
-            import json
-            if account_state is None:
-                # Broker not connected yet — send status
-                await websocket.send_text(json.dumps({
-                    "type": "broker_connecting",
-                    "message": "Connecting to broker...",
-                    "metaapi_ready": broker.is_metaapi_ready,
-                    "okx_ready": broker.is_okx_ready,
-                }))
-            else:
-                report = evaluate_compliance(account_state)
-                payload = json.dumps({
-                    "type": "compliance_update",
-                    "account": account_state.model_dump(),
-                    "compliance": report.model_dump(),
-                }, default=str)
-                await websocket.send_text(payload)
-                await process_compliance_alerts(report)
+                if account_state is None:
+                    await websocket.send_text(json.dumps({
+                        "type": "broker_connecting",
+                        "message": "Connecting to broker...",
+                        "metaapi_ready": broker.is_metaapi_ready,
+                        "okx_ready": broker.is_okx_ready,
+                    }))
+                else:
+                    report = evaluate_compliance(account_state)
+                    payload = json.dumps({
+                        "type": "compliance_update",
+                        "account": account_state.model_dump(),
+                        "compliance": report.model_dump(),
+                    }, default=str)
+                    await websocket.send_text(payload)
+                    await process_compliance_alerts(report)
 
-            # Wait before next update
-            # In production: event-driven from broker WebSocket, not polling
-            import asyncio
+            except WebSocketDisconnect:
+                raise
+            except Exception as e:
+                # Don't crash WS on data fetch errors — send error status and retry
+                logger.warning(f"WS data error: {e}")
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": str(e),
+                    }))
+                except Exception:
+                    break
+
             await asyncio.sleep(2)
 
     except WebSocketDisconnect:
+        pass
+    finally:
         ws_manager.disconnect(websocket, account_id)
-    except Exception as e:
-        ws_manager.disconnect(websocket, account_id)
-        raise
 
 
 ## ── Signal Routes ──────────────────────────────────────────────
