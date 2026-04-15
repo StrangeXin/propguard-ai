@@ -9,3 +9,4 @@ last30days-skill-cn/
 last30days-skill/
 __pycache__/
 *.pyc
+.env
