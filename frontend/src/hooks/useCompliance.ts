@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ComplianceUpdate, AccountState, ComplianceReport } from "@/lib/types";
+import type { AccountState, ComplianceReport } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -35,98 +35,154 @@ export function useCompliance({
   const [brokerConnecting, setBrokerConnecting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttempt = useRef(0);
-  const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
-  // Track whether the close was intentional (param change) vs unexpected
+  const pollTimer = useRef<NodeJS.Timeout | null>(null);
   const intentionalClose = useRef(false);
+  const usingPolling = useRef(false);
+  const wsFailCount = useRef(0);
 
-  const connect = useCallback(() => {
+  // HTTP polling fallback
+  const poll = useCallback(async () => {
     if (!enabled || !accountId) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}`
+      );
+      const data = await res.json();
+
+      if (data.status === "connecting") {
+        setBrokerConnecting(true);
+      } else if (data.account) {
+        setBrokerConnecting(false);
+        setConnected(true);
+        setError(null);
+        setReconnecting(false);
+        setAccount(data.account);
+        setCompliance(data.compliance);
+      }
+    } catch {
+      // silently retry
+    }
+  }, [accountId, firmName, accountSize, enabled]);
+
+  const startPolling = useCallback(() => {
+    if (pollTimer.current) return;
+    usingPolling.current = true;
+    poll(); // immediate first fetch
+    pollTimer.current = setInterval(poll, 3000);
+  }, [poll]);
+
+  const stopPolling = () => {
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+    usingPolling.current = false;
+  };
+
+  // WebSocket connection
+  const connectWs = useCallback(() => {
+    if (!enabled || !accountId) return;
+
+    // If WS failed 3+ times, stay on polling
+    if (wsFailCount.current >= 3) {
+      startPolling();
+      return;
+    }
 
     const wsUrl = API_BASE.replace("http", "ws");
     const url = `${wsUrl}/ws/compliance/${accountId}?firm_name=${firmName}&account_size=${accountSize}`;
 
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    try {
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setConnected(true);
-      setError(null);
-      setReconnecting(false);
-      reconnectAttempt.current = 0;
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "compliance_update") {
-          setBrokerConnecting(false);
-          setAccount(data.account);
-          setCompliance(data.compliance);
-        } else if (data.type === "broker_connecting") {
-          setBrokerConnecting(true);
+      const wsTimeout = setTimeout(() => {
+        // If WS doesn't open within 5 seconds, fallback to polling
+        if (ws.readyState !== WebSocket.OPEN) {
+          ws.close();
+          wsFailCount.current += 1;
+          startPolling();
         }
-      } catch {
-        // ignore malformed messages
-      }
-    };
+      }, 5000);
 
-    ws.onclose = () => {
-      setConnected(false);
-      wsRef.current = null;
+      ws.onopen = () => {
+        clearTimeout(wsTimeout);
+        setConnected(true);
+        setError(null);
+        setReconnecting(false);
+        wsFailCount.current = 0;
+        stopPolling(); // stop polling if WS connects
+      };
 
-      // If we closed intentionally (param change), don't show reconnecting
-      // and don't trigger backoff — the new connect() is already queued
-      if (intentionalClose.current) {
-        intentionalClose.current = false;
-        return;
-      }
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "compliance_update") {
+            setBrokerConnecting(false);
+            setAccount(data.account);
+            setCompliance(data.compliance);
+          } else if (data.type === "broker_connecting") {
+            setBrokerConnecting(true);
+          }
+        } catch {
+          // ignore
+        }
+      };
 
-      // Unexpected close: exponential backoff reconnection
-      if (enabled) {
-        const delay = Math.min(
-          1000 * Math.pow(2, reconnectAttempt.current),
-          30000
-        );
-        setReconnecting(true);
-        reconnectAttempt.current += 1;
+      ws.onclose = () => {
+        clearTimeout(wsTimeout);
+        setConnected(false);
+        wsRef.current = null;
 
-        reconnectTimer.current = setTimeout(() => {
-          connect();
-        }, delay);
-      }
-    };
+        if (intentionalClose.current) {
+          intentionalClose.current = false;
+          return;
+        }
 
-    ws.onerror = () => {
-      setError("Connection error. Retrying...");
-    };
-  }, [accountId, firmName, accountSize, enabled]);
+        wsFailCount.current += 1;
+        // Fallback to polling after WS fails
+        startPolling();
+      };
+
+      ws.onerror = () => {
+        clearTimeout(wsTimeout);
+        wsFailCount.current += 1;
+      };
+    } catch {
+      // WebSocket constructor can throw in some environments
+      wsFailCount.current += 1;
+      startPolling();
+    }
+  }, [accountId, firmName, accountSize, enabled, startPolling]);
 
   useEffect(() => {
-    // Close previous connection cleanly before opening new one
-    if (reconnectTimer.current) {
-      clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = null;
+    // Cleanup previous
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
     }
     if (wsRef.current) {
       intentionalClose.current = true;
       wsRef.current.close();
       wsRef.current = null;
     }
-    // Keep old data visible — don't clear account/compliance here
-    // New data will replace it once the new WS connects
 
-    connect();
+    // Reset WS fail count on param change
+    wsFailCount.current = 0;
+    usingPolling.current = false;
+
+    // Try WebSocket first, auto-fallback to polling
+    connectWs();
 
     return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      stopPolling();
       if (wsRef.current) {
         intentionalClose.current = true;
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [connect]);
+  }, [connectWs]);
 
   return { account, compliance, connected, error, reconnecting, brokerConnecting };
 }
