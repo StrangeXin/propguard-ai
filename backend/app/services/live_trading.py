@@ -287,27 +287,51 @@ async def mt5_get_trade_history(days: int = 30) -> list[dict]:
         end = datetime.now(timezone.utc)
 
         deals = await conn.get_deals_by_time_range(start, end)
-        if not isinstance(deals, list):
+
+        # MetaApi may return different formats
+        if not deals:
             deals = []
+        if not isinstance(deals, list):
+            try:
+                deals = list(deals)
+            except Exception:
+                deals = []
+
         trades = []
         for d in deals:
-            if not isinstance(d, dict):
+            try:
+                # Handle both dict and object formats
+                if hasattr(d, '__getitem__'):
+                    item = d
+                elif hasattr(d, '__dict__'):
+                    item = d.__dict__
+                else:
+                    continue
+
+                deal_type = item.get("type", "") if isinstance(item, dict) else getattr(d, "type", "")
+                if deal_type in ("DEAL_TYPE_BUY", "DEAL_TYPE_SELL"):
+                    def _get(key, default=""):
+                        if isinstance(item, dict):
+                            return item.get(key, default)
+                        return getattr(d, key, default)
+
+                    trades.append({
+                        "id": str(_get("id", "")),
+                        "symbol": _get("symbol", ""),
+                        "type": deal_type,
+                        "side": "buy" if deal_type == "DEAL_TYPE_BUY" else "sell",
+                        "volume": float(_get("volume", 0)),
+                        "price": float(_get("price", 0)),
+                        "profit": float(_get("profit", 0)),
+                        "commission": float(_get("commission", 0)),
+                        "swap": float(_get("swap", 0)),
+                        "time": str(_get("time", "")),
+                        "entry": _get("entryType", ""),
+                    })
+            except Exception as e:
+                logger.warning(f"Skipping deal: {e}")
                 continue
-            if d.get("type") in ("DEAL_TYPE_BUY", "DEAL_TYPE_SELL"):
-                trades.append({
-                    "id": str(d.get("id", "")),
-                    "symbol": d.get("symbol", ""),
-                    "type": d.get("type", ""),
-                    "side": "buy" if d.get("type") == "DEAL_TYPE_BUY" else "sell",
-                    "volume": d.get("volume", 0),
-                    "price": d.get("price", 0),
-                    "profit": d.get("profit", 0),
-                    "commission": d.get("commission", 0),
-                    "swap": d.get("swap", 0),
-                    "time": d.get("time", ""),
-                    "entry": d.get("entryType", ""),
-                    "comment": d.get("comment", ""),
-                })
+
         return trades
     except Exception as e:
         logger.error(f"MT5 trade history failed: {e}")

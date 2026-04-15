@@ -322,7 +322,7 @@ export function TradingPanel() {
       {/* Tabs */}
       <div className="flex gap-1 bg-zinc-900 rounded-lg p-1">
         {(["order", "positions", "orders", "history"] as const).map((key) => {
-          const labels = { order: orderType === "market" ? t.market : t.pending, positions: t.positions, orders: t.pendingOrders, history: t.history };
+          const labels = { order: t.place, positions: t.positions, orders: t.pendingOrders, history: t.history };
           const counts = { order: "", positions: account ? `(${account.open_positions})` : "", orders: `(${pendingOrders.length})`, history: "" };
           return (
             <button
