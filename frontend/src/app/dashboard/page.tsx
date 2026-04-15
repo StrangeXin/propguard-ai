@@ -7,7 +7,6 @@ import { useAuth } from "../providers";
 import { useCompliance } from "@/hooks/useCompliance";
 import { AccountHeader } from "@/components/dashboard/AccountHeader";
 import { RuleCard } from "@/components/dashboard/RuleCard";
-import { PositionsTable } from "@/components/dashboard/PositionsTable";
 import { ConnectionStatus } from "@/components/dashboard/ConnectionStatus";
 import { SignalPanel } from "@/components/dashboard/SignalPanel";
 import { BriefingPanel } from "@/components/dashboard/BriefingPanel";
@@ -138,26 +137,21 @@ export default function Dashboard() {
 
           <KlineChart />
 
-          <PositionsTable positions={account.open_positions} />
-
-          <Separator className="bg-zinc-800" />
-
           <TradingPanel />
 
           <Separator className="bg-zinc-800" />
 
-          <BriefingPanel accountId={accountId} firmName={firmName} accountSize={accountSize} />
-
-          <Separator className="bg-zinc-800" />
-
-          <AlertHistory accountId={accountId} />
-
-          <Separator className="bg-zinc-800" />
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SignalPanel />
-            <PositionCalculator equity={account.current_equity} />
+            <BriefingPanel accountId={accountId} firmName={firmName} accountSize={accountSize} />
+            <div className="space-y-6">
+              <PositionCalculator equity={account.current_equity} />
+              <AlertHistory accountId={accountId} />
+            </div>
           </div>
+
+          <Separator className="bg-zinc-800" />
+
+          <SignalPanel />
 
           <Separator className="bg-zinc-800" />
 
