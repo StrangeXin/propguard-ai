@@ -12,6 +12,9 @@ from app.services.payments import create_checkout_session, handle_stripe_webhook
 from app.services.live_trading import (
     mt5_place_order, mt5_close_position, mt5_modify_position,
     mt5_get_positions, mt5_get_orders,
+    mt5_create_pending_order, mt5_cancel_order,
+    mt5_close_position_partially, mt5_get_symbol_spec,
+    mt5_get_symbol_price, mt5_get_trade_history, mt5_get_account_info,
 )
 
 from app.rules.engine import evaluate_compliance, list_available_firms, load_firm_rules
@@ -583,6 +586,103 @@ async def trading_close(position_id: str, authorization: str = Header(default=""
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
     return await mt5_close_position(position_id)
+
+
+@router.post("/api/trading/position/{position_id}/close-partial")
+async def trading_close_partial(position_id: str, volume: float, authorization: str = Header(default="")):
+    """Partially close a position."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return await mt5_close_position_partially(position_id, volume)
+
+
+class PendingOrderInput(BaseModel):
+    symbol: str
+    side: str
+    size: float
+    price: float
+    order_type: str = "limit"  # "limit" or "stop"
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
+@router.post("/api/trading/pending-order")
+async def trading_pending_order(body: PendingOrderInput, authorization: str = Header(default="")):
+    """Place a limit or stop order."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return await mt5_create_pending_order(
+        symbol=body.symbol, side=body.side, volume=body.size,
+        price=body.price, order_type=body.order_type,
+        stop_loss=body.stop_loss, take_profit=body.take_profit,
+    )
+
+
+@router.get("/api/trading/orders")
+async def trading_orders(authorization: str = Header(default="")):
+    """Get all pending orders."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return {"orders": await mt5_get_orders()}
+
+
+@router.post("/api/trading/order/{order_id}/cancel")
+async def trading_cancel_order(order_id: str, authorization: str = Header(default="")):
+    """Cancel a pending order."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return await mt5_cancel_order(order_id)
+
+
+@router.get("/api/trading/history")
+async def trading_history(days: int = 30, authorization: str = Header(default="")):
+    """Get closed trade history."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    trades = await mt5_get_trade_history(days=min(days, 90))
+    # Calculate stats
+    total = len(trades)
+    winners = sum(1 for t in trades if t.get("profit", 0) > 0)
+    total_pnl = sum(t.get("profit", 0) for t in trades)
+    return {
+        "trades": trades,
+        "stats": {
+            "total_trades": total,
+            "winning_trades": winners,
+            "win_rate": round(winners / total * 100, 1) if total > 0 else 0,
+            "total_pnl": round(total_pnl, 2),
+        },
+    }
+
+
+@router.get("/api/trading/symbol/{symbol}")
+async def trading_symbol_info(symbol: str):
+    """Get symbol specification and current price."""
+    spec = await mt5_get_symbol_spec(symbol)
+    price = await mt5_get_symbol_price(symbol)
+    return {"spec": spec, "price": price}
+
+
+@router.get("/api/trading/account-info")
+async def trading_account_info(authorization: str = Header(default="")):
+    """Get full MT5 account information."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    info = await mt5_get_account_info()
+    import json as _json
+    return _json.loads(_json.dumps(info, default=str)) if info else {"error": "Not connected"}
 
 
 ## ── Payments ────────────────────────────────────────────────────

@@ -155,3 +155,186 @@ async def mt5_get_orders() -> list[dict]:
     except Exception as e:
         logger.error(f"MT5 get orders failed: {e}")
         return []
+
+
+async def mt5_create_pending_order(
+    symbol: str,
+    side: str,
+    volume: float,
+    price: float,
+    order_type: str = "limit",
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+) -> dict:
+    """Create a pending order (limit or stop)."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return {"success": False, "error": "MetaApi not connected"}
+
+    try:
+        if order_type == "limit":
+            if side == "buy":
+                result = await conn.create_limit_buy_order(symbol, volume, price, stop_loss, take_profit)
+            else:
+                result = await conn.create_limit_sell_order(symbol, volume, price, stop_loss, take_profit)
+        else:  # stop order
+            if side == "buy":
+                result = await conn.create_stop_buy_order(symbol, volume, price, stop_loss, take_profit)
+            else:
+                result = await conn.create_stop_sell_order(symbol, volume, price, stop_loss, take_profit)
+
+        logger.info(f"MT5 pending order: {order_type} {side} {symbol} {volume} @ {price} → {result}")
+        return {
+            "success": True,
+            "order_id": result.get("orderId", ""),
+            "symbol": symbol,
+            "side": side,
+            "volume": volume,
+            "price": price,
+            "order_type": order_type,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+        }
+    except Exception as e:
+        logger.error(f"MT5 pending order failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def mt5_cancel_order(order_id: str) -> dict:
+    """Cancel a pending order."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return {"success": False, "error": "MetaApi not connected"}
+
+    try:
+        result = await conn.cancel_order(order_id)
+        logger.info(f"MT5 order cancelled: {order_id}")
+        return {"success": True, "order_id": order_id}
+    except Exception as e:
+        logger.error(f"MT5 cancel order failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def mt5_close_position_partially(position_id: str, volume: float) -> dict:
+    """Partially close a position."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return {"success": False, "error": "MetaApi not connected"}
+
+    try:
+        result = await conn.close_position_partially(position_id, volume)
+        logger.info(f"MT5 partial close: {position_id} volume={volume} → {result}")
+        return {"success": True, "position_id": position_id, "closed_volume": volume}
+    except Exception as e:
+        logger.error(f"MT5 partial close failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def mt5_get_symbol_spec(symbol: str) -> dict | None:
+    """Get symbol specification (spread, contract size, min lot, etc.)."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return None
+
+    try:
+        spec = await conn.get_symbol_specification(symbol)
+        return {
+            "symbol": spec.get("symbol"),
+            "description": spec.get("description", ""),
+            "currency": spec.get("currencyProfit", ""),
+            "digits": spec.get("digits", 5),
+            "contract_size": spec.get("contractSize", 100000),
+            "min_volume": spec.get("volumeMin", 0.01),
+            "max_volume": spec.get("volumeMax", 100),
+            "volume_step": spec.get("volumeStep", 0.01),
+            "spread": spec.get("spread"),
+            "trade_mode": spec.get("tradeMode", ""),
+        }
+    except Exception as e:
+        logger.error(f"MT5 symbol spec failed for {symbol}: {e}")
+        return None
+
+
+async def mt5_get_symbol_price(symbol: str) -> dict | None:
+    """Get real-time bid/ask price for a symbol."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return None
+
+    try:
+        price = await conn.get_symbol_price(symbol)
+        return {
+            "symbol": price.get("symbol"),
+            "bid": price.get("bid"),
+            "ask": price.get("ask"),
+            "time": price.get("time"),
+            "spread": round(price.get("ask", 0) - price.get("bid", 0), 6),
+        }
+    except Exception as e:
+        logger.error(f"MT5 price failed for {symbol}: {e}")
+        return None
+
+
+async def mt5_get_trade_history(days: int = 30) -> list[dict]:
+    """Get closed trade history."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return []
+
+    try:
+        from datetime import datetime, timedelta, timezone
+        start = datetime.now(timezone.utc) - timedelta(days=days)
+        end = datetime.now(timezone.utc)
+
+        deals = await conn.get_deals_by_time_range(start, end)
+        if not isinstance(deals, list):
+            deals = []
+        trades = []
+        for d in deals:
+            if not isinstance(d, dict):
+                continue
+            if d.get("type") in ("DEAL_TYPE_BUY", "DEAL_TYPE_SELL"):
+                trades.append({
+                    "id": str(d.get("id", "")),
+                    "symbol": d.get("symbol", ""),
+                    "type": d.get("type", ""),
+                    "side": "buy" if d.get("type") == "DEAL_TYPE_BUY" else "sell",
+                    "volume": d.get("volume", 0),
+                    "price": d.get("price", 0),
+                    "profit": d.get("profit", 0),
+                    "commission": d.get("commission", 0),
+                    "swap": d.get("swap", 0),
+                    "time": d.get("time", ""),
+                    "entry": d.get("entryType", ""),
+                    "comment": d.get("comment", ""),
+                })
+        return trades
+    except Exception as e:
+        logger.error(f"MT5 trade history failed: {e}")
+        return []
+
+
+async def mt5_get_account_info() -> dict | None:
+    """Get full account information."""
+    conn = await get_metaapi_connection()
+    if not conn:
+        return None
+
+    try:
+        info = await conn.get_account_information()
+        return {
+            "broker": info.get("broker", ""),
+            "server": info.get("server", ""),
+            "balance": float(info.get("balance", 0)),
+            "equity": float(info.get("equity", 0)),
+            "margin": float(info.get("margin", 0)),
+            "free_margin": float(info.get("freeMargin", 0)),
+            "margin_level": float(info.get("marginLevel", 0)),
+            "leverage": info.get("leverage", 0),
+            "currency": info.get("currency", "USD"),
+            "platform": info.get("platform", "mt5"),
+            "type": info.get("type", ""),
+        }
+    except Exception as e:
+        logger.error(f"MT5 account info failed: {e}")
+        return None
