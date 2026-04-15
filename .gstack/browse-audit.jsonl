@@ -30,3 +30,5 @@
 {"ts":"2026-04-15T06:57:07.053Z","cmd":"screenshot","args":"/tmp/pg-zh-final.png --full-page","origin":"about:blank","durationMs":3,"status":"error","hasCookies":false,"mode":"launched","error":"Unknown screenshot flag: --full-page"}
 {"ts":"2026-04-15T06:58:23.440Z","cmd":"goto","args":"http://localhost:3001","origin":"http://localhost:3001/","durationMs":139,"status":"ok","hasCookies":false,"mode":"launched"}
 {"ts":"2026-04-15T06:58:26.508Z","cmd":"console","args":"","origin":"http://localhost:3001/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T08:37:00.718Z","cmd":"goto","args":"http://localhost:3001/login","origin":"http://localhost:3001/login","durationMs":121,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-04-15T08:37:02.795Z","cmd":"console","args":"","origin":"http://localhost:3001/login","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
