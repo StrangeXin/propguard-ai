@@ -9,6 +9,10 @@ from pydantic import BaseModel
 
 from app.services.auth import register_user, login_user, verify_token, update_user, link_telegram, get_user_by_id
 from app.services.payments import create_checkout_session, handle_stripe_webhook
+from app.services.paper_trading import (
+    place_order, update_positions, modify_position, close_position,
+    get_paper_account, reset_paper_account, _account_summary,
+)
 
 from app.rules.engine import evaluate_compliance, list_available_firms, load_firm_rules
 from app.services.trading_stats import calculate_challenge_progress
@@ -494,6 +498,87 @@ async def auth_link_telegram(body: LinkTelegramInput, authorization: str = Heade
         raise HTTPException(status_code=401, detail="Invalid token")
     link_telegram(user["id"], body.chat_id)
     return {"linked": True}
+
+
+## ── Paper Trading ───────────────────────────────────────────────
+
+
+class PlaceOrderInput(BaseModel):
+    symbol: str
+    side: str  # "buy" or "sell"
+    size: float
+    order_type: str = "market"
+    price: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
+class ModifyPositionInput(BaseModel):
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
+@router.get("/api/paper/account")
+async def paper_account(authorization: str = Header(default="")):
+    """Get paper trading account summary."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    account = get_paper_account(user["id"])
+    await update_positions(user["id"])
+    return _account_summary(account)
+
+
+@router.post("/api/paper/order")
+async def paper_place_order(body: PlaceOrderInput, authorization: str = Header(default="")):
+    """Place a paper trading order."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    result = await place_order(
+        user_id=user["id"],
+        symbol=body.symbol,
+        side=body.side,
+        size=body.size,
+        order_type=body.order_type,
+        price=body.price,
+        stop_loss=body.stop_loss,
+        take_profit=body.take_profit,
+    )
+    return result
+
+
+@router.post("/api/paper/position/{position_id}/modify")
+async def paper_modify(position_id: str, body: ModifyPositionInput, authorization: str = Header(default="")):
+    """Modify SL/TP of a paper position."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return await modify_position(user["id"], position_id, body.stop_loss, body.take_profit)
+
+
+@router.post("/api/paper/position/{position_id}/close")
+async def paper_close(position_id: str, authorization: str = Header(default="")):
+    """Close a paper position at market price."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return await close_position(user["id"], position_id)
+
+
+@router.post("/api/paper/reset")
+async def paper_reset(authorization: str = Header(default="")):
+    """Reset paper trading account."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    reset_paper_account(user["id"])
+    return {"reset": True, "balance": 100000}
 
 
 ## ── Payments ────────────────────────────────────────────────────

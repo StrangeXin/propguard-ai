@@ -16,6 +16,7 @@ import { KlineChart } from "@/components/dashboard/KlineChart";
 import { AlertHistory } from "@/components/dashboard/AlertHistory";
 import { AccountManager } from "@/components/dashboard/AccountManager";
 import { ChallengeProgress } from "@/components/dashboard/ChallengeProgress";
+import { TradingPanel } from "@/components/dashboard/TradingPanel";
 import { LocaleSwitcher } from "@/components/dashboard/LocaleSwitcher";
 import {
   Select,
@@ -138,6 +139,10 @@ export default function Dashboard() {
           <KlineChart />
 
           <PositionsTable positions={account.open_positions} />
+
+          <Separator className="bg-zinc-800" />
+
+          <TradingPanel />
 
           <Separator className="bg-zinc-800" />
 
