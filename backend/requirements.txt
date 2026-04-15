@@ -8,6 +8,8 @@ anthropic==0.40.0
 python-telegram-bot==21.6
 apscheduler==3.10.4
 supabase==2.9.0
+metaapi-cloud-sdk==28.0.3
+PyJWT==2.9.0
 python-dotenv==1.0.1
 pytest==8.3.0
 pytest-asyncio==0.24.0
