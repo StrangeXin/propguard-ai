@@ -9,9 +9,9 @@ from pydantic import BaseModel
 
 from app.services.auth import register_user, login_user, verify_token, update_user, link_telegram, get_user_by_id
 from app.services.payments import create_checkout_session, handle_stripe_webhook
-from app.services.paper_trading import (
-    place_order, update_positions, modify_position, close_position,
-    get_paper_account, reset_paper_account, _account_summary,
+from app.services.live_trading import (
+    mt5_place_order, mt5_close_position, mt5_modify_position,
+    mt5_get_positions, mt5_get_orders,
 )
 
 from app.rules.engine import evaluate_compliance, list_available_firms, load_firm_rules
@@ -518,67 +518,71 @@ class ModifyPositionInput(BaseModel):
     take_profit: float | None = None
 
 
-@router.get("/api/paper/account")
-async def paper_account(authorization: str = Header(default="")):
-    """Get paper trading account summary."""
+@router.get("/api/trading/account")
+async def trading_account(authorization: str = Header(default="")):
+    """Get MT5 trading account info + positions."""
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    account = get_paper_account(user["id"])
-    await update_positions(user["id"])
-    return _account_summary(account)
+
+    positions = await mt5_get_positions()
+    account_state = await broker.get_account_state("demo-001", "ftmo", 100000)
+
+    result = {
+        "balance": account_state.current_balance if account_state else 0,
+        "equity": account_state.current_equity if account_state else 0,
+        "initial_balance": account_state.initial_balance if account_state else 100000,
+        "pnl": account_state.total_pnl if account_state else 0,
+        "pnl_pct": round(account_state.total_pnl / account_state.initial_balance * 100, 2) if account_state and account_state.initial_balance > 0 else 0,
+        "open_positions": len(positions),
+        "total_trades": 0,
+        "winning_trades": 0,
+        "win_rate": 0,
+        "positions": positions,
+        "recent_trades": [],
+        "source": "metaapi_mt5_demo",
+    }
+    import json as _json
+    return _json.loads(_json.dumps(result, default=str))
 
 
-@router.post("/api/paper/order")
-async def paper_place_order(body: PlaceOrderInput, authorization: str = Header(default="")):
-    """Place a paper trading order."""
+@router.post("/api/trading/order")
+async def trading_place_order(body: PlaceOrderInput, authorization: str = Header(default="")):
+    """Place an order on MT5 via MetaApi."""
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    result = await place_order(
-        user_id=user["id"],
+
+    result = await mt5_place_order(
         symbol=body.symbol,
         side=body.side,
-        size=body.size,
-        order_type=body.order_type,
-        price=body.price,
+        volume=body.size,
         stop_loss=body.stop_loss,
         take_profit=body.take_profit,
     )
     return result
 
 
-@router.post("/api/paper/position/{position_id}/modify")
-async def paper_modify(position_id: str, body: ModifyPositionInput, authorization: str = Header(default="")):
-    """Modify SL/TP of a paper position."""
+@router.post("/api/trading/position/{position_id}/modify")
+async def trading_modify(position_id: str, body: ModifyPositionInput, authorization: str = Header(default="")):
+    """Modify SL/TP on MT5."""
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    return await modify_position(user["id"], position_id, body.stop_loss, body.take_profit)
+    return await mt5_modify_position(position_id, body.stop_loss, body.take_profit)
 
 
-@router.post("/api/paper/position/{position_id}/close")
-async def paper_close(position_id: str, authorization: str = Header(default="")):
-    """Close a paper position at market price."""
+@router.post("/api/trading/position/{position_id}/close")
+async def trading_close(position_id: str, authorization: str = Header(default="")):
+    """Close a position on MT5."""
     token = authorization.replace("Bearer ", "")
     user = verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    return await close_position(user["id"], position_id)
-
-
-@router.post("/api/paper/reset")
-async def paper_reset(authorization: str = Header(default="")):
-    """Reset paper trading account."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    reset_paper_account(user["id"])
-    return {"reset": True, "balance": 100000}
+    return await mt5_close_position(position_id)
 
 
 ## ── Payments ────────────────────────────────────────────────────

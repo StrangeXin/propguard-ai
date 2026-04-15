@@ -41,7 +41,7 @@ interface PaperAccount {
 
 const texts: Record<string, Record<string, string>> = {
   en: {
-    title: "Paper Trading",
+    title: "Trading",
     balance: "Balance",
     equity: "Equity",
     pnl: "P&L",
@@ -65,7 +65,7 @@ const texts: Record<string, Record<string, string>> = {
     noTrades: "No trades yet",
   },
   zh: {
-    title: "模拟交易",
+    title: "交易",
     balance: "余额",
     equity: "净值",
     pnl: "盈亏",
@@ -109,7 +109,7 @@ export function TradingPanel() {
   const fetchAccount = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/paper/account`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/account`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setAccount(await res.json());
     } catch { /* silent */ }
   }, [token]);
@@ -120,16 +120,16 @@ export function TradingPanel() {
     return () => clearInterval(interval);
   }, [fetchAccount]);
 
-  const submitOrder = async () => {
+  const submitOrder = async (orderSide: string) => {
     setLoading(true);
     setMsg("");
     try {
-      const res = await fetch(`${API_BASE}/api/paper/order`, {
+      const res = await fetch(`${API_BASE}/api/trading/order`, {
         method: "POST",
         headers,
         body: JSON.stringify({
           symbol,
-          side,
+          side: orderSide,
           size: parseFloat(size),
           stop_loss: sl ? parseFloat(sl) : null,
           take_profit: tp ? parseFloat(tp) : null,
@@ -137,7 +137,7 @@ export function TradingPanel() {
       });
       const data = await res.json();
       if (data.success) {
-        setMsg(`${side.toUpperCase()} ${symbol} ${size} @ $${data.order.filled_price.toLocaleString()}`);
+        setMsg(`${orderSide.toUpperCase()} ${symbol} ${size} @ $${data.order.filled_price.toLocaleString()}`);
         setAccount(data.account);
         setSl("");
         setTp("");
@@ -152,13 +152,13 @@ export function TradingPanel() {
   };
 
   const closePos = async (posId: string) => {
-    const res = await fetch(`${API_BASE}/api/paper/position/${posId}/close`, { method: "POST", headers });
+    const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
     const data = await res.json();
     if (data.success) fetchAccount();
   };
 
   const resetAccount = async () => {
-    await fetch(`${API_BASE}/api/paper/reset`, { method: "POST", headers });
+    await fetch(`${API_BASE}/api/trading/reset`, { method: "POST", headers });
     fetchAccount();
   };
 
@@ -168,7 +168,7 @@ export function TradingPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">{t.title}</h2>
-        <button onClick={resetAccount} className="text-[10px] text-zinc-600 hover:text-red-400 transition-colors">{t.reset}</button>
+        <Badge className="bg-zinc-800 text-zinc-500 text-[10px]">MT5 Demo</Badge>
       </div>
 
       {/* Account stats */}
@@ -212,14 +212,14 @@ export function TradingPanel() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => { setSide("buy"); submitOrder(); }}
+              onClick={() => submitOrder("buy")}
               disabled={loading}
               className="flex-1 py-2 bg-green-800 hover:bg-green-700 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-colors"
             >
               {t.buy}
             </button>
             <button
-              onClick={() => { setSide("sell"); submitOrder(); }}
+              onClick={() => submitOrder("sell")}
               disabled={loading}
               className="flex-1 py-2 bg-red-800 hover:bg-red-700 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-colors"
             >
