@@ -12,83 +12,120 @@ interface Position {
   id: string;
   symbol: string;
   side: string;
-  size?: number;
-  volume?: number;
+  volume: number;
   entry_price: number;
   current_price: number;
   stop_loss: number | null;
   take_profit: number | null;
-  unrealized_pnl?: number;
-  profit?: number;
+  profit: number;
 }
 
-interface PaperAccount {
+interface PendingOrder {
+  id: string;
+  symbol: string;
+  type: string;
+  volume: number;
+  price: number;
+  stop_loss: number | null;
+  take_profit: number | null;
+}
+
+interface TradeRecord {
+  symbol: string;
+  side: string;
+  volume: number;
+  price: number;
+  profit: number;
+  time: string;
+}
+
+interface AccountData {
   balance: number;
   equity: number;
   pnl: number;
   pnl_pct: number;
   open_positions: number;
-  total_trades: number;
-  win_rate: number;
   positions: Position[];
-  recent_trades: Array<{
-    symbol: string;
-    side: string;
-    pnl: number;
-    entry_price: number;
-    exit_price: number;
-    reason?: string;
-  }>;
 }
+
+interface SymbolPrice {
+  bid: number;
+  ask: number;
+  spread: number;
+}
+
+const SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "ETHUSD"];
 
 const texts: Record<string, Record<string, string>> = {
   en: {
     title: "Trading",
+    market: "Market",
+    pending: "Pending",
     balance: "Balance",
     equity: "Equity",
+    margin: "Free Margin",
     pnl: "P&L",
-    winRate: "Win Rate",
-    trades: "Trades",
-    placeOrder: "Place Order",
     symbol: "Symbol",
-    side: "Side",
-    size: "Size",
+    size: "Lots",
     sl: "Stop Loss",
     tp: "Take Profit",
-    buy: "Buy / Long",
-    sell: "Sell / Short",
-    submit: "Place Order",
-    close: "Close",
-    modify: "SL/TP",
+    price: "Price",
+    buy: "BUY",
+    sell: "SELL",
+    limit: "Limit",
+    stop: "Stop",
+    place: "Place Order",
     positions: "Open Positions",
+    pendingOrders: "Pending Orders",
     history: "Trade History",
-    reset: "Reset Account",
+    close: "Close",
+    partial: "Partial",
+    modify: "Modify",
+    cancel: "Cancel",
     noPositions: "No open positions",
-    noTrades: "No trades yet",
+    noOrders: "No pending orders",
+    noHistory: "No trade history",
+    bid: "Bid",
+    ask: "Ask",
+    spread: "Spread",
+    trades: "Trades",
+    winRate: "Win Rate",
+    save: "Save",
   },
   zh: {
     title: "交易",
+    market: "市价",
+    pending: "挂单",
     balance: "余额",
     equity: "净值",
+    margin: "可用保证金",
     pnl: "盈亏",
-    winRate: "胜率",
-    trades: "交易数",
-    placeOrder: "下单",
     symbol: "品种",
-    side: "方向",
     size: "手数",
     sl: "止损",
     tp: "止盈",
-    buy: "买入 / 做多",
-    sell: "卖出 / 做空",
-    submit: "下单",
-    close: "平仓",
-    modify: "止损止盈",
+    price: "价格",
+    buy: "买入",
+    sell: "卖出",
+    limit: "限价",
+    stop: "止损",
+    place: "下单",
     positions: "持仓",
+    pendingOrders: "挂单",
     history: "交易记录",
-    reset: "重置账户",
+    close: "平仓",
+    partial: "部分",
+    modify: "修改",
+    cancel: "取消",
     noPositions: "暂无持仓",
-    noTrades: "暂无交易",
+    noOrders: "暂无挂单",
+    noHistory: "暂无交易记录",
+    bid: "买价",
+    ask: "卖价",
+    spread: "点差",
+    trades: "交易数",
+    winRate: "胜率",
+    save: "保存",
   },
 };
 
@@ -97,17 +134,34 @@ export function TradingPanel() {
   const { token } = useAuth();
   const t = texts[locale] || texts.en;
 
-  const [account, setAccount] = useState<PaperAccount | null>(null);
-  const [symbol, setSymbol] = useState("BTCUSD");
-  const [side, setSide] = useState("buy");
+  const [tab, setTab] = useState<"order" | "positions" | "orders" | "history">("order");
+  const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
+  const [account, setAccount] = useState<AccountData | null>(null);
+  const [accountInfo, setAccountInfo] = useState<{ free_margin: number; leverage: number } | null>(null);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+  const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
+  const [historyStats, setHistoryStats] = useState<{ total_trades: number; win_rate: number; total_pnl: number }>({ total_trades: 0, win_rate: 0, total_pnl: 0 });
+  const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
+
+  const [symbol, setSymbol] = useState("EURUSD");
   const [size, setSize] = useState("0.01");
   const [sl, setSl] = useState("");
   const [tp, setTp] = useState("");
+  const [limitPrice, setLimitPrice] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
+  // Modify SL/TP state
+  const [editingPos, setEditingPos] = useState<string | null>(null);
+  const [editSl, setEditSl] = useState("");
+  const [editTp, setEditTp] = useState("");
+  // Partial close state
+  const [partialPos, setPartialPos] = useState<string | null>(null);
+  const [partialVol, setPartialVol] = useState("");
+
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
+  // Fetch account + positions
   const fetchAccount = useCallback(async () => {
     if (!token) return;
     try {
@@ -116,34 +170,92 @@ export function TradingPanel() {
     } catch { /* silent */ }
   }, [token]);
 
+  // Fetch account info (margin, leverage)
+  const fetchAccountInfo = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/account-info`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setAccountInfo(await res.json());
+    } catch { /* silent */ }
+  }, [token]);
+
+  // Fetch symbol price
+  const fetchPrice = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/symbol/${symbol}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.price) setSymbolPrice(data.price);
+      }
+    } catch { /* silent */ }
+  }, [symbol]);
+
+  // Fetch pending orders
+  const fetchOrders = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/orders`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingOrders(data.orders || []);
+      }
+    } catch { /* silent */ }
+  }, [token]);
+
+  // Fetch trade history
+  const fetchHistory = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/history?days=30`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setTradeHistory(data.trades || []);
+        setHistoryStats(data.stats || { total_trades: 0, win_rate: 0, total_pnl: 0 });
+      }
+    } catch { /* silent */ }
+  }, [token]);
+
   useEffect(() => {
     fetchAccount();
-    const interval = setInterval(fetchAccount, 5000);
-    return () => clearInterval(interval);
-  }, [fetchAccount]);
+    fetchAccountInfo();
+    fetchPrice();
+    const i1 = setInterval(fetchAccount, 5000);
+    const i2 = setInterval(fetchPrice, 3000);
+    return () => { clearInterval(i1); clearInterval(i2); };
+  }, [fetchAccount, fetchAccountInfo, fetchPrice]);
 
-  const submitOrder = async (orderSide: string) => {
+  useEffect(() => { fetchPrice(); }, [symbol, fetchPrice]);
+
+  useEffect(() => {
+    if (tab === "orders") fetchOrders();
+    if (tab === "history") fetchHistory();
+  }, [tab, fetchOrders, fetchHistory]);
+
+  // Place order
+  const submitOrder = async (side: string) => {
     setLoading(true);
     setMsg("");
     try {
-      const res = await fetch(`${API_BASE}/api/trading/order`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          symbol,
-          side: orderSide,
-          size: parseFloat(size),
-          stop_loss: sl ? parseFloat(sl) : null,
-          take_profit: tp ? parseFloat(tp) : null,
-        }),
-      });
+      const url = orderType === "market" ? `${API_BASE}/api/trading/order` : `${API_BASE}/api/trading/pending-order`;
+      const body: Record<string, unknown> = {
+        symbol,
+        side,
+        size: parseFloat(size),
+        stop_loss: sl ? parseFloat(sl) : null,
+        take_profit: tp ? parseFloat(tp) : null,
+      };
+      if (orderType !== "market") {
+        body.price = parseFloat(limitPrice);
+        body.order_type = orderType;
+      }
+
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
       const data = await res.json();
       if (data.success) {
-        const price = data.price || data.order?.filled_price || "";
-        setMsg(`${orderSide.toUpperCase()} ${symbol} ${size} lots${price ? ` @ $${Number(price).toLocaleString()}` : ""} — Order #${data.order_id || ""}`);
-        setSl("");
-        setTp("");
+        setMsg(`${side.toUpperCase()} ${symbol} ${size} lots — #${data.order_id || "OK"}`);
+        setSl(""); setTp(""); setLimitPrice("");
         fetchAccount();
+        fetchOrders();
       } else {
         setMsg(data.error || "Order failed");
       }
@@ -154,15 +266,38 @@ export function TradingPanel() {
     }
   };
 
+  // Close position
   const closePos = async (posId: string) => {
-    const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
-    const data = await res.json();
-    if (data.success) fetchAccount();
+    await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
+    fetchAccount();
   };
 
-  const resetAccount = async () => {
-    await fetch(`${API_BASE}/api/trading/reset`, { method: "POST", headers });
+  // Partial close
+  const partialClose = async (posId: string) => {
+    if (!partialVol) return;
+    await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
+    setPartialPos(null);
+    setPartialVol("");
     fetchAccount();
+  };
+
+  // Modify SL/TP
+  const modifyPos = async (posId: string) => {
+    await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        stop_loss: editSl ? parseFloat(editSl) : null,
+        take_profit: editTp ? parseFloat(editTp) : null,
+      }),
+    });
+    setEditingPos(null);
+    fetchAccount();
+  };
+
+  // Cancel pending order
+  const cancelOrder = async (orderId: string) => {
+    await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
+    fetchOrders();
   };
 
   const pnlColor = (v: number) => v >= 0 ? "text-green-400" : "text-red-400";
@@ -176,103 +311,190 @@ export function TradingPanel() {
 
       {/* Account stats */}
       {account && (
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           <Stat label={t.balance} value={`$${account.balance.toLocaleString("en", { minimumFractionDigits: 2 })}`} />
           <Stat label={t.equity} value={`$${account.equity.toLocaleString("en", { minimumFractionDigits: 2 })}`} />
+          <Stat label={t.margin} value={accountInfo ? `$${accountInfo.free_margin.toLocaleString("en", { minimumFractionDigits: 2 })}` : "—"} />
           <Stat label={t.pnl} value={`${account.pnl >= 0 ? "+" : ""}$${account.pnl.toFixed(2)}`} color={pnlColor(account.pnl)} />
-          <Stat label={t.winRate} value={`${account.win_rate}%`} />
-          <Stat label={t.trades} value={`${account.total_trades}`} />
         </div>
       )}
 
-      {/* Order form */}
-      <Card className="bg-zinc-900 border-0">
-        <CardContent className="pt-4 space-y-3">
-          <div className="grid grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] text-zinc-500 block mb-1">{t.symbol}</label>
-              <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none">
-                <option value="BTCUSD">BTC/USD</option>
-                <option value="ETHUSD">ETH/USD</option>
-                <option value="EURUSD">EUR/USD</option>
-                <option value="XAUUSD">XAU/USD</option>
-                <option value="GBPUSD">GBP/USD</option>
-                <option value="SOLUSD">SOL/USD</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-zinc-500 block mb-1">{t.size}</label>
-              <input type="number" step="0.01" value={size} onChange={(e) => setSize(e.target.value)} className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] text-zinc-500 block mb-1">{t.sl}</label>
-              <input type="number" step="any" value={sl} onChange={(e) => setSl(e.target.value)} placeholder="—" className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none placeholder-zinc-600" />
-            </div>
-            <div>
-              <label className="text-[10px] text-zinc-500 block mb-1">{t.tp}</label>
-              <input type="number" step="any" value={tp} onChange={(e) => setTp(e.target.value)} placeholder="—" className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none placeholder-zinc-600" />
-            </div>
-          </div>
-          <div className="flex gap-2">
+      {/* Tabs */}
+      <div className="flex gap-1 bg-zinc-900 rounded-lg p-1">
+        {(["order", "positions", "orders", "history"] as const).map((key) => {
+          const labels = { order: orderType === "market" ? t.market : t.pending, positions: t.positions, orders: t.pendingOrders, history: t.history };
+          const counts = { order: "", positions: account ? `(${account.open_positions})` : "", orders: `(${pendingOrders.length})`, history: "" };
+          return (
             <button
-              onClick={() => submitOrder("buy")}
-              disabled={loading}
-              className="flex-1 py-2 bg-green-800 hover:bg-green-700 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-colors"
+              key={key}
+              onClick={() => setTab(key)}
+              className={`flex-1 py-1.5 text-xs rounded-md transition-colors ${tab === key ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}
             >
-              {t.buy}
+              {labels[key]} {counts[key]}
             </button>
-            <button
-              onClick={() => submitOrder("sell")}
-              disabled={loading}
-              className="flex-1 py-2 bg-red-800 hover:bg-red-700 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-colors"
-            >
-              {t.sell}
-            </button>
-          </div>
-          {msg && <p className="text-xs text-zinc-400">{msg}</p>}
-        </CardContent>
-      </Card>
+          );
+        })}
+      </div>
 
-      {/* Positions */}
-      {account && account.positions.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs text-zinc-500 uppercase">{t.positions}</h3>
-          {account.positions.map((p) => (
-            <div key={p.id} className="bg-zinc-900 rounded-lg px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Badge className={p.side === "long" ? "bg-green-900 text-green-300" : "bg-red-900 text-red-300"}>
-                  {p.side.toUpperCase()}
-                </Badge>
-                <span className="font-mono text-white text-sm">{p.symbol}</span>
-                <span className="text-xs text-zinc-500">{p.volume || p.size} @ ${p.entry_price.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`font-mono text-sm font-bold ${pnlColor(p.profit ?? p.unrealized_pnl ?? 0)}`}>
-                  {(p.profit ?? p.unrealized_pnl ?? 0) >= 0 ? "+" : ""}${(p.profit ?? p.unrealized_pnl ?? 0).toFixed(2)}
-                </span>
-                <button onClick={() => closePos(p.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
-                  {t.close}
+      {/* Order Form */}
+      {tab === "order" && (
+        <Card className="bg-zinc-900 border-0">
+          <CardContent className="pt-4 space-y-3">
+            {/* Order type toggle */}
+            <div className="flex gap-1 bg-zinc-800 rounded p-0.5">
+              {(["market", "limit", "stop"] as const).map((ot) => (
+                <button key={ot} onClick={() => setOrderType(ot)}
+                  className={`flex-1 py-1 text-xs rounded transition-colors ${orderType === ot ? "bg-zinc-600 text-white" : "text-zinc-500"}`}>
+                  {ot === "market" ? t.market : ot === "limit" ? t.limit : t.stop}
                 </button>
+              ))}
+            </div>
+
+            {/* Symbol + live price */}
+            <div className="flex items-center gap-3">
+              <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none">
+                {SYMBOLS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {symbolPrice && (
+                <div className="flex gap-3 text-xs">
+                  <span className="text-green-400">{t.bid}: {symbolPrice.bid}</span>
+                  <span className="text-red-400">{t.ask}: {symbolPrice.ask}</span>
+                  <span className="text-zinc-600">{t.spread}: {(symbolPrice.spread * 100000).toFixed(1)}p</span>
+                </div>
+              )}
+            </div>
+
+            {/* Inputs */}
+            <div className={`grid ${orderType === "market" ? "grid-cols-3" : "grid-cols-4"} gap-2`}>
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-1">{t.size}</label>
+                <input type="number" step="0.01" value={size} onChange={(e) => setSize(e.target.value)} className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none" />
               </div>
+              {orderType !== "market" && (
+                <div>
+                  <label className="text-[10px] text-zinc-500 block mb-1">{t.price}</label>
+                  <input type="number" step="any" value={limitPrice} onChange={(e) => setLimitPrice(e.target.value)} placeholder={symbolPrice ? String(symbolPrice.bid) : ""} className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none placeholder-zinc-700" />
+                </div>
+              )}
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-1">{t.sl}</label>
+                <input type="number" step="any" value={sl} onChange={(e) => setSl(e.target.value)} placeholder="—" className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none placeholder-zinc-700" />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-1">{t.tp}</label>
+                <input type="number" step="any" value={tp} onChange={(e) => setTp(e.target.value)} placeholder="—" className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none placeholder-zinc-700" />
+              </div>
+            </div>
+
+            {/* Buy / Sell buttons */}
+            <div className="flex gap-2">
+              <button onClick={() => submitOrder("buy")} disabled={loading}
+                className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
+                {t.buy} {symbolPrice ? symbolPrice.ask : ""}
+              </button>
+              <button onClick={() => submitOrder("sell")} disabled={loading}
+                className="flex-1 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
+                {t.sell} {symbolPrice ? symbolPrice.bid : ""}
+              </button>
+            </div>
+            {msg && <p className="text-xs text-zinc-400">{msg}</p>}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Positions Tab */}
+      {tab === "positions" && (
+        <div className="space-y-2">
+          {(!account || account.positions.length === 0) && (
+            <div className="bg-zinc-900 rounded-lg p-6 text-center text-zinc-600 text-sm">{t.noPositions}</div>
+          )}
+          {account?.positions.map((p) => (
+            <div key={p.id} className="bg-zinc-900 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge className={p.side === "long" ? "bg-green-900 text-green-300 text-[10px]" : "bg-red-900 text-red-300 text-[10px]"}>{p.side.toUpperCase()}</Badge>
+                  <span className="font-mono text-white text-sm">{p.symbol}</span>
+                  <span className="text-xs text-zinc-500">{p.volume} lots @ {p.entry_price}</span>
+                </div>
+                <span className={`font-mono text-sm font-bold ${pnlColor(p.profit)}`}>
+                  {p.profit >= 0 ? "+" : ""}${p.profit.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <span>SL: {p.stop_loss || "—"}</span>
+                <span>TP: {p.take_profit || "—"}</span>
+                <span>Now: {p.current_price}</span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => closePos(p.id)} className="px-3 py-1 bg-red-900/50 text-red-300 text-xs rounded hover:bg-red-900 transition-colors">{t.close}</button>
+                <button onClick={() => { setPartialPos(p.id); setPartialVol(String(p.volume / 2)); }} className="px-3 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700 transition-colors">{t.partial}</button>
+                <button onClick={() => { setEditingPos(p.id); setEditSl(p.stop_loss ? String(p.stop_loss) : ""); setEditTp(p.take_profit ? String(p.take_profit) : ""); }} className="px-3 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700 transition-colors">{t.modify}</button>
+              </div>
+
+              {/* Partial close form */}
+              {partialPos === p.id && (
+                <div className="flex gap-2 items-center bg-zinc-800 rounded p-2">
+                  <input type="number" step="0.01" value={partialVol} onChange={(e) => setPartialVol(e.target.value)} className="w-20 bg-zinc-700 text-white rounded px-2 py-1 text-xs focus:outline-none" />
+                  <span className="text-xs text-zinc-500">lots</span>
+                  <button onClick={() => partialClose(p.id)} className="px-2 py-1 bg-red-800 text-white text-xs rounded">{t.close}</button>
+                  <button onClick={() => setPartialPos(null)} className="text-xs text-zinc-500">{t.cancel}</button>
+                </div>
+              )}
+
+              {/* Modify SL/TP form */}
+              {editingPos === p.id && (
+                <div className="flex gap-2 items-center bg-zinc-800 rounded p-2">
+                  <input type="number" step="any" value={editSl} onChange={(e) => setEditSl(e.target.value)} placeholder="SL" className="w-24 bg-zinc-700 text-white rounded px-2 py-1 text-xs focus:outline-none placeholder-zinc-600" />
+                  <input type="number" step="any" value={editTp} onChange={(e) => setEditTp(e.target.value)} placeholder="TP" className="w-24 bg-zinc-700 text-white rounded px-2 py-1 text-xs focus:outline-none placeholder-zinc-600" />
+                  <button onClick={() => modifyPos(p.id)} className="px-2 py-1 bg-blue-800 text-white text-xs rounded">{t.save}</button>
+                  <button onClick={() => setEditingPos(null)} className="text-xs text-zinc-500">{t.cancel}</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Trade history */}
-      {account && account.recent_trades.length > 0 && (
+      {/* Pending Orders Tab */}
+      {tab === "orders" && (
         <div className="space-y-2">
-          <h3 className="text-xs text-zinc-500 uppercase">{t.history}</h3>
-          {account.recent_trades.slice(-5).reverse().map((trade, i) => (
+          {pendingOrders.length === 0 && (
+            <div className="bg-zinc-900 rounded-lg p-6 text-center text-zinc-600 text-sm">{t.noOrders}</div>
+          )}
+          {pendingOrders.map((o) => (
+            <div key={o.id} className="bg-zinc-900 rounded-lg px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-yellow-900 text-yellow-300 text-[10px]">{o.type}</Badge>
+                <span className="font-mono text-white text-sm">{o.symbol}</span>
+                <span className="text-xs text-zinc-500">{o.volume} @ {o.price}</span>
+              </div>
+              <button onClick={() => cancelOrder(o.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">{t.cancel}</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* History Tab */}
+      {tab === "history" && (
+        <div className="space-y-3">
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <Stat label={t.trades} value={String(historyStats.total_trades)} />
+            <Stat label={t.winRate} value={`${historyStats.win_rate}%`} />
+            <Stat label={t.pnl} value={`$${historyStats.total_pnl.toFixed(2)}`} color={pnlColor(historyStats.total_pnl)} />
+          </div>
+          {tradeHistory.length === 0 && (
+            <div className="bg-zinc-900 rounded-lg p-6 text-center text-zinc-600 text-sm">{t.noHistory}</div>
+          )}
+          {tradeHistory.slice(0, 20).map((trade, i) => (
             <div key={i} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <span className={trade.side === "long" ? "text-green-500" : "text-red-500"}>{trade.side.toUpperCase()}</span>
+                <span className={trade.side === "buy" ? "text-green-500" : "text-red-500"}>{trade.side.toUpperCase()}</span>
                 <span className="text-zinc-300">{trade.symbol}</span>
-                <span className="text-zinc-600">{trade.entry_price} → {trade.exit_price}</span>
-                {trade.reason && <span className="text-zinc-600">({trade.reason})</span>}
+                <span className="text-zinc-600">{trade.volume} @ {trade.price}</span>
               </div>
-              <span className={`font-mono font-bold ${pnlColor(trade.pnl)}`}>
-                {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
+              <span className={`font-mono font-bold ${pnlColor(trade.profit)}`}>
+                {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
               </span>
             </div>
           ))}
