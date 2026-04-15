@@ -15,7 +15,13 @@ from app.models.account import (
 )
 from app.config import get_settings
 
-RULES_DIR = Path(__file__).parent.parent.parent.parent / "data" / "prop_firm_rules"
+# Find rules dir: works both locally (backend/../data) and in Docker (/app/data)
+_engine_dir = Path(__file__).parent  # app/rules/
+_candidates = [
+    _engine_dir.parent.parent.parent / "data" / "prop_firm_rules",  # local: backend/../data
+    _engine_dir.parent.parent / "data" / "prop_firm_rules",         # docker: /app/data
+]
+RULES_DIR = next((p for p in _candidates if p.exists()), _candidates[0])
 
 
 def load_firm_rules(firm_name: str) -> dict:
