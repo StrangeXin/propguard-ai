@@ -224,9 +224,9 @@ Return ONLY valid JSON with your analysis and actions."""
         ai_result = json.loads(result_text)
 
     except json.JSONDecodeError:
-        return {"error": "AI returned invalid JSON", "raw": result_text[:500]}
+        return {"error": "AI returned invalid JSON", "raw": result_text[:500], "prompt": user_prompt}
     except Exception as e:
-        return {"error": f"AI call failed: {str(e)}"}
+        return {"error": f"AI call failed: {str(e)}", "prompt": user_prompt}
 
     # 4. Execute actions (or dry run)
     executed = []
@@ -264,6 +264,7 @@ Return ONLY valid JSON with your analysis and actions."""
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "system_prompt": SYSTEM_PROMPT,
         "prompt": user_prompt,
         "analysis": ai_result.get("analysis", ""),
         "actions_planned": len(ai_result.get("actions", [])),

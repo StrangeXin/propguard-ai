@@ -268,15 +268,26 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
           <div className="bg-zinc-900 rounded-xl max-w-lg w-full p-6 space-y-4">
             <h3 className="text-lg font-bold text-white">{t.proposed}</h3>
 
-            {/* Full AI prompt context */}
-            {pendingResult.prompt && (
+            {/* Full AI context */}
+            {(pendingResult.prompt || pendingResult.system_prompt) && (
               <details open className="group">
                 <summary className="text-[10px] text-zinc-500 cursor-pointer hover:text-zinc-300 transition-colors mb-1">
                   {locale === "zh" ? "AI 完整上下文" : "Full AI Context"}
                 </summary>
-                <pre className="bg-zinc-950 rounded-lg p-3 text-[10px] text-zinc-400 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed border border-zinc-800">
-                  {pendingResult.prompt}
-                </pre>
+                <div className="bg-zinc-950 rounded-lg p-3 max-h-60 overflow-y-auto border border-zinc-800 space-y-3">
+                  {pendingResult.system_prompt && (
+                    <div>
+                      <span className="text-[10px] text-blue-400 font-bold block mb-1">System Prompt:</span>
+                      <pre className="text-[10px] text-zinc-500 whitespace-pre-wrap font-mono leading-relaxed">{pendingResult.system_prompt}</pre>
+                    </div>
+                  )}
+                  {pendingResult.prompt && (
+                    <div>
+                      <span className="text-[10px] text-green-400 font-bold block mb-1">User Prompt:</span>
+                      <pre className="text-[10px] text-zinc-400 whitespace-pre-wrap font-mono leading-relaxed">{pendingResult.prompt}</pre>
+                    </div>
+                  )}
+                </div>
               </details>
             )}
 
@@ -370,14 +381,25 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
             )}
 
             {/* Prompt toggle */}
-            {pendingResult.prompt && (
+            {(pendingResult.prompt || pendingResult.system_prompt) && (
               <details className="group">
                 <summary className="text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400 transition-colors">
-                  {locale === "zh" ? "查看 AI 提示词" : "View AI Prompt"}
+                  {locale === "zh" ? "查看 AI 完整上下文" : "View Full AI Context"}
                 </summary>
-                <pre className="mt-2 bg-zinc-950 rounded-lg p-3 text-[10px] text-zinc-500 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
-                  {pendingResult.prompt}
-                </pre>
+                <div className="mt-2 bg-zinc-950 rounded-lg p-3 max-h-64 overflow-y-auto border border-zinc-800 space-y-3">
+                  {pendingResult.system_prompt && (
+                    <div>
+                      <span className="text-[10px] text-blue-400 font-bold block mb-1">System Prompt:</span>
+                      <pre className="text-[10px] text-zinc-500 whitespace-pre-wrap font-mono leading-relaxed">{pendingResult.system_prompt}</pre>
+                    </div>
+                  )}
+                  {pendingResult.prompt && (
+                    <div>
+                      <span className="text-[10px] text-green-400 font-bold block mb-1">User Prompt:</span>
+                      <pre className="text-[10px] text-zinc-400 whitespace-pre-wrap font-mono leading-relaxed">{pendingResult.prompt}</pre>
+                    </div>
+                  )}
+                </div>
               </details>
             )}
           </CardContent>
