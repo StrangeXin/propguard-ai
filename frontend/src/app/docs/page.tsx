@@ -106,7 +106,7 @@ export default function DocsPage() {
               title={d.riskTitle}
               description={d.riskDesc}
               items={[
-                "预置 FTMO、TopStep、Breakout 等考核规则",
+                "预置 FTMO、TopStep、CryptoFundTrader 等考核规则",
                 "实时合规监控（账户状态 vs 规则距离）",
                 "4 级告警：SAFE → WARNING → CRITICAL → DANGER",
                 "AI 盘前简报（今日风险评估 + 建议）",
@@ -158,7 +158,7 @@ export default function DocsPage() {
 │                   Backend                         │
 │              Python FastAPI                       │
 │                                                   │
-│  Rule Engine ← JSON Rules (FTMO/TopStep/Breakout)│
+│  Rule Engine ← JSON Rules (FTMO/TopStep/CryptoFundTrader)│
 │  Signal Parser ← Telegram Bot / TradingView Hook │
 │  AI Scorer ← Claude API (Haiku) + Rule Fallback  │
 │  Alert Service → Telegram Bot API                │
@@ -188,7 +188,7 @@ export default function DocsPage() {
               <tbody className="text-zinc-300">
                 <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">FTMO</td>
-                  <td className="py-3 pr-4">外汇 / 指数 / 加密</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 加密 / 外汇</td>
                   <td className="py-3 pr-4">5%</td>
                   <td className="py-3 pr-4">10% (静态)</td>
                   <td className="py-3 text-zinc-400">新闻交易限制, 4 天最低</td>
@@ -201,11 +201,11 @@ export default function DocsPage() {
                   <td className="py-3 text-zinc-400">追踪回撤, 合约数限制</td>
                 </tr>
                 <tr>
-                  <td className="py-3 pr-4 font-medium text-white">Breakout</td>
-                  <td className="py-3 pr-4">加密</td>
+                  <td className="py-3 pr-4 font-medium text-white">CryptoFundTrader</td>
+                  <td className="py-3 pr-4">加密 / 外汇</td>
                   <td className="py-3 pr-4">无</td>
-                  <td className="py-3 pr-4">6% (静态)</td>
-                  <td className="py-3 text-zinc-400">无时间限制, USDC 出金</td>
+                  <td className="py-3 pr-4">10% (静态)</td>
+                  <td className="py-3 text-zinc-400">无时间限制, MT5 / Bybit</td>
                 </tr>
               </tbody>
             </table>
@@ -300,7 +300,7 @@ npm run dev -- --port 3001`}</Code>
         {/* Roadmap */}
         <Section title={d.roadmapTitle}>
           <div className="space-y-3">
-            <RoadmapItem status="done" text="Prop Firm 规则引擎 (FTMO, TopStep, Breakout)" />
+            <RoadmapItem status="done" text="Prop Firm 规则引擎 (FTMO, TopStep, CryptoFundTrader)" />
             <RoadmapItem status="done" text="实时合规监控 Dashboard + WebSocket" />
             <RoadmapItem status="done" text="信号解析器 + AI 评分 (Claude API + 规则回退)" />
             <RoadmapItem status="done" text="盘前 AI 简报" />

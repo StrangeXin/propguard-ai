@@ -36,7 +36,7 @@ const features = {
 const firms = [
   { name: "FTMO", market: "Forex / Indices", dd: "10% static" },
   { name: "TopStep", market: "Futures", dd: "3-4% trailing" },
-  { name: "Breakout", market: "Crypto", dd: "6% static" },
+  { name: "CryptoFundTrader", market: "Crypto / Forex", dd: "10% static" },
 ];
 
 const texts = {

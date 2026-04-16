@@ -70,12 +70,8 @@ class BrokerAPIClient:
         return self._has_okx
 
     async def get_account_state(self, account_id: str, firm_name: str, account_size: int) -> AccountState | None:
+        """All firms use MetaApi (MT5). Same account, different rule sets."""
         try:
-            if firm_name.lower() == "breakout" and self._has_okx:
-                return await asyncio.wait_for(
-                    self._get_okx_state(account_id, firm_name, account_size), timeout=10
-                )
-
             if self._metaapi_ready and self._connection:
                 return await asyncio.wait_for(
                     self._get_metaapi_state(account_id, firm_name, account_size), timeout=10

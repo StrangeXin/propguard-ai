@@ -1,0 +1,61 @@
+{
+  "firm_name": "CryptoFundTrader",
+  "version": 1,
+  "effective_date": "2026-04-16",
+  "website": "https://cryptofundtrader.com",
+  "description": "Crypto + Forex prop firm. Supports MT5 and Bybit. 1-phase and 2-phase evaluations. No time limit.",
+  "markets": ["crypto", "forex"],
+  "evaluation_type": "1-step_and_2-step",
+  "accounts": [
+    { "size": 5000, "currency": "USD", "profit_target_phase1_pct": 8, "profit_target_phase2_pct": 5 },
+    { "size": 10000, "currency": "USD", "profit_target_phase1_pct": 8, "profit_target_phase2_pct": 5 },
+    { "size": 25000, "currency": "USD", "profit_target_phase1_pct": 8, "profit_target_phase2_pct": 5 },
+    { "size": 50000, "currency": "USD", "profit_target_phase1_pct": 8, "profit_target_phase2_pct": 5 },
+    { "size": 100000, "currency": "USD", "profit_target_phase1_pct": 8, "profit_target_phase2_pct": 5 },
+    { "size": 200000, "currency": "USD", "profit_target_phase1_pct": 8, "profit_target_phase2_pct": 5 }
+  ],
+  "rules": [
+    {
+      "type": "daily_loss",
+      "value": 5,
+      "unit": "percent_of_initial_balance",
+      "description": "Daily maximum loss is 5% of initial balance (2-phase). Calculated from starting balance at 12:05 AM UTC. Includes floating P/L. Breach = account violation.",
+      "calculation_base": "equity",
+      "reset_time": "00:05 UTC",
+      "breach_action": "account_violation"
+    },
+    {
+      "type": "max_drawdown",
+      "value": 10,
+      "unit": "percent_of_initial_balance",
+      "description": "Maximum loss is 10% of initial balance (2-phase, static). Equity cannot drop below 90% of initial balance at any time. Breach = account violation.",
+      "trailing": false,
+      "calculation_base": "initial_balance",
+      "breach_action": "account_violation"
+    },
+    {
+      "type": "time_limit",
+      "value": null,
+      "unit": "days",
+      "description": "No time limit on evaluations. Trade at your own pace."
+    },
+    {
+      "type": "min_trading_days",
+      "value": null,
+      "unit": "days",
+      "description": "No minimum trading days requirement."
+    },
+    {
+      "type": "news_restriction",
+      "value": false,
+      "unit": "boolean",
+      "description": "No news trading restrictions. Weekend and overnight holding allowed on all accounts."
+    }
+  ],
+  "profit_split": { "base": 80, "max": 90, "unit": "percent" },
+  "sources": [
+    "https://cryptofundtrader.com/evaluation-process/",
+    "https://cryptofundtrader.com/faq/",
+    "https://thepropfirmguide.com/crypto-fund-trader/"
+  ]
+}

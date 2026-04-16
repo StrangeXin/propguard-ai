@@ -29,7 +29,7 @@ import { Separator } from "@/components/ui/separator";
 const FIRMS = [
   { name: "ftmo", label: "FTMO", sizes: [10000, 25000, 50000, 100000, 200000], defaultSize: 100000 },
   { name: "topstep", label: "TopStep", sizes: [50000, 100000, 150000], defaultSize: 50000 },
-  { name: "breakout", label: "Breakout", sizes: [5000, 10000, 25000, 50000, 100000], defaultSize: 50000 },
+  { name: "cryptofundtrader", label: "CryptoFundTrader", sizes: [5000, 10000, 25000, 50000, 100000, 200000], defaultSize: 100000 },
 ];
 
 export default function Dashboard() {
