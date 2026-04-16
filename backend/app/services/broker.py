@@ -1,8 +1,8 @@
 """
 Broker API adapter — connects to MT4/MT5 via MetaApi and OKX for real account data.
-No mock data. Returns None if not connected yet.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class BrokerAPIClient:
-    """Connects to MT4/MT5 via MetaApi and OKX. No mock fallback."""
 
     def __init__(self):
         self._settings = get_settings()
@@ -25,57 +24,40 @@ class BrokerAPIClient:
         self._has_okx = bool(self._settings.okx_api_key)
 
     async def connect(self) -> bool:
-        """Connect to all configured brokers."""
-        success = False
-
         if self._has_metaapi:
-            success = await self._connect_metaapi() or success
-
-        if self._has_okx:
-            # OKX doesn't need persistent connection, just API keys
-            success = True
-
-        return success
+            await self._connect_metaapi()
+        return True
 
     async def _connect_metaapi(self) -> bool:
         try:
             from metaapi_cloud_sdk import MetaApi
 
+            logger.info("MetaApi: initializing...")
             self._api = MetaApi(self._settings.metaapi_token)
+
             self._account = await self._api.metatrader_account_api.get_account(
                 self._settings.metaapi_account_id
             )
+            logger.info(f"MetaApi: state={self._account.state} connection={self._account.connection_status}")
 
-            logger.info(f"MetaApi account state: {self._account.state}, connection: {self._account.connection_status}")
-
-            if self._account.state == 'UNDEPLOYED':
+            if self._account.state != 'DEPLOYED':
                 try:
                     await self._account.deploy()
-                    await self._account.wait_deployed()
-                except Exception as deploy_err:
-                    logger.warning(f"Deploy failed: {deploy_err}")
-                    self._account = await self._api.metatrader_account_api.get_account(
-                        self._settings.metaapi_account_id
-                    )
+                    await self._account.wait_deployed(timeout_in_seconds=15)
+                except Exception as e:
+                    logger.warning(f"MetaApi deploy: {e}")
+                    return False
 
-            if self._account.state == 'DEPLOYED':
-                try:
-                    await self._account.wait_connected(timeout_in_seconds=30)
-                except Exception:
-                    logger.warning("MetaApi wait_connected timed out, trying RPC anyway")
+            self._connection = self._account.get_rpc_connection()
+            await self._connection.connect()
+            await self._connection.wait_synchronized(timeout_in_seconds=15)
 
-                self._connection = self._account.get_rpc_connection()
-                await self._connection.connect()
-                await self._connection.wait_synchronized(timeout_in_seconds=60)
-
-                self._metaapi_ready = True
-                logger.info("MetaApi connected successfully")
-                return True
-
-            raise Exception(f"Account not in DEPLOYED state: {self._account.state}")
+            self._metaapi_ready = True
+            logger.info("MetaApi: READY")
+            return True
 
         except Exception as e:
-            logger.error(f"MetaApi connection failed: {e}")
+            logger.error(f"MetaApi connect failed: {e}")
             self._metaapi_ready = False
             return False
 
@@ -88,28 +70,21 @@ class BrokerAPIClient:
         return self._has_okx
 
     async def get_account_state(self, account_id: str, firm_name: str, account_size: int) -> AccountState | None:
-        """Get real account state. Returns None if broker not connected yet."""
-        import asyncio
-
         try:
-            # OKX for crypto prop firms
             if firm_name.lower() == "breakout" and self._has_okx:
                 return await asyncio.wait_for(
-                    self._get_okx_state(account_id, firm_name, account_size),
-                    timeout=10,
+                    self._get_okx_state(account_id, firm_name, account_size), timeout=10
                 )
 
-            # MetaApi for forex/futures
             if self._metaapi_ready and self._connection:
                 return await asyncio.wait_for(
-                    self._get_metaapi_state(account_id, firm_name, account_size),
-                    timeout=10,
+                    self._get_metaapi_state(account_id, firm_name, account_size), timeout=10
                 )
         except asyncio.TimeoutError:
-            logger.warning(f"Broker data fetch timed out for {firm_name}")
-            return None
+            logger.warning(f"Broker data timeout for {firm_name}")
+        except Exception as e:
+            logger.error(f"Broker data error: {e}")
 
-        # Not connected yet
         return None
 
     async def _get_okx_state(self, account_id: str, firm_name: str, account_size: int) -> AccountState | None:
@@ -117,7 +92,7 @@ class BrokerAPIClient:
             from app.services.okx_client import get_okx_account_state
             return await get_okx_account_state(account_id, firm_name, account_size)
         except Exception as e:
-            logger.error(f"OKX data fetch failed: {e}")
+            logger.error(f"OKX error: {e}")
             return None
 
     async def _get_metaapi_state(self, account_id: str, firm_name: str, account_size: int) -> AccountState | None:
@@ -128,7 +103,6 @@ class BrokerAPIClient:
             balance = float(info.get('balance', 0))
             equity = float(info.get('equity', 0))
             initial_balance = float(account_size)
-
             unrealized_pnl = equity - balance
             total_pnl = (balance - initial_balance) + unrealized_pnl
 
@@ -150,8 +124,6 @@ class BrokerAPIClient:
                     opened_at=opened,
                 ))
 
-            hwm = max(initial_balance, equity)
-
             return AccountState(
                 account_id=account_id,
                 firm_name=firm_name,
@@ -161,13 +133,12 @@ class BrokerAPIClient:
                 current_equity=round(equity, 2),
                 daily_pnl=round(unrealized_pnl, 2),
                 total_pnl=round(total_pnl, 2),
-                equity_high_watermark=round(hwm, 2),
+                equity_high_watermark=round(max(initial_balance, equity), 2),
                 open_positions=positions,
                 trading_days_count=0,
                 challenge_start_date=None,
                 last_updated=datetime.now(),
             )
-
         except Exception as e:
-            logger.error(f"MetaApi data fetch failed: {e}")
+            logger.error(f"MetaApi data error: {e}")
             return None
