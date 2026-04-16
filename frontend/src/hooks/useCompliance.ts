@@ -154,6 +154,10 @@ export function useCompliance({
 
   useEffect(() => {
     cleanup();
+    // Clear stale data from previous firm/account
+    setAccount(null);
+    setCompliance(null);
+    setBrokerConnecting(false);
     wsRetries.current = 0;
     modeRef.current = "ws";
     connectWs();

@@ -6,12 +6,25 @@ import { useI18n } from "@/i18n/context";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 const SYMBOLS = [
-  { value: "BTCUSD", label: "BTC/USD" },
-  { value: "ETHUSD", label: "ETH/USD" },
   { value: "EURUSD", label: "EUR/USD" },
   { value: "GBPUSD", label: "GBP/USD" },
+  { value: "USDJPY", label: "USD/JPY" },
+  { value: "AUDUSD", label: "AUD/USD" },
+  { value: "USDCAD", label: "USD/CAD" },
+  { value: "NZDUSD", label: "NZD/USD" },
+  { value: "USDCHF", label: "USD/CHF" },
+  { value: "EURJPY", label: "EUR/JPY" },
+  { value: "GBPJPY", label: "GBP/JPY" },
+  { value: "EURGBP", label: "EUR/GBP" },
+  { value: "AUDCAD", label: "AUD/CAD" },
   { value: "XAUUSD", label: "XAU/USD" },
+  { value: "XAGUSD", label: "XAG/USD" },
+  { value: "BTCUSD", label: "BTC/USD" },
+  { value: "ETHUSD", label: "ETH/USD" },
   { value: "SOLUSD", label: "SOL/USD" },
+  { value: "US30", label: "US30" },
+  { value: "NAS100", label: "NAS100" },
+  { value: "SPX500", label: "SPX500" },
 ];
 
 const PERIODS = [
