@@ -1,62 +1,22 @@
 {
   "firm_name": "TopStep",
-  "version": 1,
-  "effective_date": "2026-04-14",
+  "version": 2,
+  "effective_date": "2026-04-16",
   "website": "https://www.topstep.com",
-  "description": "Futures-focused prop firm. Trading Combine evaluation. Trailing drawdown model.",
+  "description": "Futures-focused prop firm. Trading Combine evaluation. End-of-day trailing drawdown.",
   "markets": ["futures"],
   "evaluation_type": "1-step",
   "accounts": [
-    {
-      "size": 50000,
-      "currency": "USD",
-      "profit_target": 3000,
-      "profit_target_pct": 6,
-      "max_loss_limit": 2000,
-      "max_loss_limit_pct": 4,
-      "daily_loss_limit": 1000,
-      "daily_loss_limit_pct": 2,
-      "max_position_size": 5,
-      "max_position_size_unit": "contracts",
-      "max_micro_contracts": 50
-    },
-    {
-      "size": 100000,
-      "currency": "USD",
-      "profit_target": 6000,
-      "profit_target_pct": 6,
-      "max_loss_limit": 3000,
-      "max_loss_limit_pct": 3,
-      "daily_loss_limit": 2000,
-      "daily_loss_limit_pct": 2,
-      "max_position_size": 10,
-      "max_position_size_unit": "contracts",
-      "max_micro_contracts": 100
-    },
-    {
-      "size": 150000,
-      "currency": "USD",
-      "profit_target": 9000,
-      "profit_target_pct": 6,
-      "max_loss_limit": 4500,
-      "max_loss_limit_pct": 3,
-      "daily_loss_limit": 3000,
-      "daily_loss_limit_pct": 2,
-      "max_position_size": 15,
-      "max_position_size_unit": "contracts",
-      "max_micro_contracts": 150
-    }
+    { "size": 50000, "currency": "USD", "profit_target": 3000, "profit_target_pct": 6, "max_loss_limit": 2000, "daily_loss_limit": 1000, "max_position_size": 5, "max_micro_contracts": 50 },
+    { "size": 100000, "currency": "USD", "profit_target": 6000, "profit_target_pct": 6, "max_loss_limit": 3000, "daily_loss_limit": 2000, "max_position_size": 10, "max_micro_contracts": 100 },
+    { "size": 150000, "currency": "USD", "profit_target": 9000, "profit_target_pct": 6, "max_loss_limit": 4500, "daily_loss_limit": 3000, "max_position_size": 15, "max_micro_contracts": 150 }
   ],
   "rules": [
     {
       "type": "daily_loss",
-      "value_by_account": {
-        "50000": 1000,
-        "100000": 2000,
-        "150000": 3000
-      },
+      "value_by_account": { "50000": 1000, "100000": 2000, "150000": 3000 },
       "unit": "usd",
-      "description": "Intraday loss cap that resets every trading day at 5:00 PM CT. Includes both realized and unrealized P/L. Breaching causes liquidation of open positions and cancellation of pending orders, but is NOT a rule violation — account remains eligible.",
+      "description": "Intraday loss cap. Resets at 5:00 PM CT daily. Includes realized + unrealized P/L. Breaching causes automatic liquidation of all positions and cancellation of pending orders. NOT a rule violation — account remains eligible for funding, trading resumes next session.",
       "calculation_base": "equity",
       "reset_time": "17:00 CT",
       "breach_action": "liquidation_and_pause",
@@ -64,44 +24,33 @@
     },
     {
       "type": "max_drawdown",
-      "value_by_account": {
-        "50000": 2000,
-        "100000": 3000,
-        "150000": 4500
-      },
+      "value_by_account": { "50000": 2000, "100000": 3000, "150000": 4500 },
       "unit": "usd",
-      "description": "End-of-day trailing drawdown. Moves up with your equity high watermark. Breaching this IS a rule violation — account becomes ineligible for funding.",
+      "description": "END-OF-DAY trailing drawdown. Trails the highest END-OF-DAY balance (not intraday equity). Once MLL reaches starting balance, it locks permanently. Breaching IS a rule violation. Example: $50K account, make $500 day 1 → balance $50,500, MLL moves to $48,500. Lose $500 day 2 → balance $50,000, MLL stays at $48,500.",
       "trailing": true,
-      "trailing_type": "end_of_day",
-      "calculation_base": "equity_high_watermark",
+      "trailing_type": "end_of_day_balance",
+      "calculation_note": "CRITICAL: Trails highest END-OF-DAY BALANCE, not real-time equity. The floor only moves up at session close (5PM CT), never intraday.",
+      "calculation_base": "end_of_day_balance_high_watermark",
       "breach_action": "account_violation"
     },
     {
       "type": "position_size",
-      "value_by_account": {
-        "50000": 5,
-        "100000": 10,
-        "150000": 15
-      },
+      "value_by_account": { "50000": 5, "100000": 10, "150000": 15 },
       "unit": "contracts",
-      "description": "Maximum number of standard contracts allowed simultaneously. Micro contracts allowed at 10:1 ratio."
+      "description": "Maximum number of standard contracts allowed simultaneously. Micro contracts at 10:1 ratio."
     },
     {
       "type": "trading_hours",
       "value": "CME trading hours",
       "unit": "schedule",
-      "description": "Must trade within CME exchange hours. No overnight holding past session close unless specifically allowed."
+      "description": "Must trade within CME exchange hours. Session: Sunday 5:00 PM CT - Friday 4:00 PM CT. Daily break: 4:00 PM - 5:00 PM CT."
     }
   ],
-  "profit_split": {
-    "base": 90,
-    "max": 100,
-    "unit": "percent",
-    "scaling": "First $10K at 100%, then 90% after"
-  },
+  "profit_split": { "base": 90, "max": 100, "unit": "percent" },
   "sources": [
     "https://help.topstep.com/en/articles/8284197-trading-combine-parameters",
     "https://help.topstep.com/en/articles/8284207-what-is-the-daily-loss-limit-and-what-happens-if-i-exceed-it",
-    "https://help.topstep.com/en/articles/8284204-what-is-the-maximum-loss-limit"
+    "https://help.topstep.com/en/articles/8284204-what-is-the-maximum-loss-limit",
+    "https://www.topstep.com/blog/prop-firm-drawdown-rules/"
   ]
 }

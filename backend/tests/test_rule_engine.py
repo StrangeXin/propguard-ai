@@ -69,32 +69,30 @@ class TestFTMOCompliance:
         assert report.overall_status == AlertLevel.SAFE
 
     def test_daily_loss_warning(self):
-        """Account approaching daily loss limit (5% of $100K = $5000)."""
-        # Lost $3500 today = 70% of limit used = 30% remaining = WARNING
-        account = make_account(daily_pnl=-3500)
+        """FTMO: daily loss = max(balance, initial) - equity. 5% of $100K = $5000."""
+        # Balance $100K, equity $96.5K → loss = $3500, 70% used, 30% remaining = WARNING
+        account = make_account(total_pnl=0, equity_offset=-3500)
         report = evaluate_compliance(account)
         daily_check = next(c for c in report.checks if c.rule_type == "daily_loss")
         assert daily_check.alert_level == AlertLevel.WARNING
 
     def test_daily_loss_critical(self):
-        """Account very close to daily loss limit."""
-        # Lost $4300 = 86% used = 14% remaining = CRITICAL
-        account = make_account(daily_pnl=-4300)
+        """Equity dropped $4300 below balance."""
+        account = make_account(total_pnl=0, equity_offset=-4300)
         report = evaluate_compliance(account)
         daily_check = next(c for c in report.checks if c.rule_type == "daily_loss")
         assert daily_check.alert_level == AlertLevel.CRITICAL
 
     def test_daily_loss_danger(self):
-        """Account about to breach daily loss limit."""
-        # Lost $4800 = 96% used = 4% remaining = DANGER
-        account = make_account(daily_pnl=-4800)
+        """Equity dropped $4800 below balance."""
+        account = make_account(total_pnl=0, equity_offset=-4800)
         report = evaluate_compliance(account)
         daily_check = next(c for c in report.checks if c.rule_type == "daily_loss")
         assert daily_check.alert_level == AlertLevel.DANGER
 
     def test_daily_loss_breached(self):
-        """Account has breached daily loss limit."""
-        account = make_account(daily_pnl=-5100)
+        """Equity dropped $5100 below balance — breached."""
+        account = make_account(total_pnl=0, equity_offset=-5100)
         report = evaluate_compliance(account)
         daily_check = next(c for c in report.checks if c.rule_type == "daily_loss")
         assert daily_check.alert_level == AlertLevel.BREACHED
@@ -132,8 +130,8 @@ class TestFTMOCompliance:
 
     def test_overall_status_worst_case(self):
         """Overall status should be the worst across all checks."""
-        # Daily loss breached, but drawdown safe
-        account = make_account(daily_pnl=-5500, total_pnl=-2000)
+        # Equity dropped $5500 below balance — daily loss breached
+        account = make_account(total_pnl=0, equity_offset=-5500)
         report = evaluate_compliance(account)
         assert report.overall_status == AlertLevel.BREACHED
 

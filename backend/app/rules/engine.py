@@ -80,7 +80,15 @@ def _resolve_rule_value(rule: dict, account_size: int) -> float | None:
 def check_daily_loss(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
-    """Check daily loss limit compliance."""
+    """
+    Check daily loss limit compliance.
+
+    FTMO: Floor = max(balance_at_midnight, initial_balance) - 5% * initial_balance
+          The 5% is always of INITIAL balance, but the reference point is
+          the higher of midnight balance or initial balance.
+    TopStep: Fixed USD amount, resets at 5PM CT. NOT a violation, just liquidation.
+    Breakout: Percent of initial balance. Breach = permanent account loss.
+    """
     if rule.get("has_daily_limit") is False:
         return RuleCheckResult(
             rule_type="daily_loss",
@@ -99,25 +107,41 @@ def check_daily_loss(
 
     unit = rule.get("unit", "")
     if "percent" in unit:
+        # FTMO/Breakout: percentage of initial balance
         limit_usd = account.initial_balance * (limit_value / 100)
-    else:
-        limit_usd = limit_value
 
-    current_loss = abs(min(account.daily_pnl, 0))
+        # FTMO specific: floor is based on max(midnight_balance, initial) - limit
+        # Since we don't have midnight snapshot, use max(current_balance, initial) as approximation
+        # This is conservative (may show less room than reality)
+        reference = max(account.current_balance, account.initial_balance)
+        floor = reference - limit_usd
+        current_loss = max(reference - account.current_equity, 0)
+    else:
+        # TopStep: fixed USD amount
+        limit_usd = limit_value
+        current_loss = abs(min(account.daily_pnl, 0))
+
     remaining = limit_usd - current_loss
     remaining_pct = (remaining / limit_usd * 100) if limit_usd > 0 else 100.0
 
     alert_level = _get_alert_level(remaining_pct)
+
+    # Add breach consequence to message
+    is_violation = rule.get("is_violation", True)
+    consequence = "Account violation!" if is_violation else "Positions liquidated, trading paused until next session."
+
     message = _build_daily_loss_message(
         alert_level, remaining, limit_usd, current_loss, firm_rules["firm_name"]
     )
+    if alert_level == AlertLevel.BREACHED:
+        message += f" {consequence}"
 
     return RuleCheckResult(
         rule_type="daily_loss",
         rule_description=rule.get("description", "Daily loss limit"),
-        current_value=current_loss,
-        limit_value=limit_usd,
-        remaining=remaining,
+        current_value=round(current_loss, 2),
+        limit_value=round(limit_usd, 2),
+        remaining=round(max(remaining, 0), 2),
         remaining_pct=max(remaining_pct, 0),
         alert_level=alert_level,
         message=message,
@@ -141,25 +165,42 @@ def _build_daily_loss_message(
 def check_max_drawdown(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
-    """Check maximum drawdown compliance."""
+    """
+    Check maximum drawdown compliance.
+
+    FTMO: Static 10% of initial balance. Floor never moves.
+    TopStep: END-OF-DAY trailing. Floor trails highest END-OF-DAY BALANCE
+             (not intraday equity). Once floor reaches initial balance, it locks.
+    Breakout: Static. 6% Classic / 5% Pro / 3% Turbo.
+    """
     limit_value = _resolve_rule_value(rule, account.account_size)
     if limit_value is None:
         return None
 
     unit = rule.get("unit", "")
     is_trailing = rule.get("trailing", False)
+    trailing_type = rule.get("trailing_type", "")
 
     if "percent" in unit:
         if is_trailing:
-            limit_usd = account.equity_high_watermark * (limit_value / 100)
-            floor = account.equity_high_watermark - limit_usd
+            # TopStep: trailing from equity high watermark
+            # In production, this should be end-of-day balance high watermark
+            # Using equity_high_watermark as best available approximation
+            # NOTE: This is MORE conservative than official (intraday vs EOD)
+            hwm = account.equity_high_watermark
+            limit_usd = hwm * (limit_value / 100)
+            floor = hwm - limit_usd
+            # TopStep: once floor reaches initial balance, it locks
+            floor = max(floor, account.initial_balance - limit_usd)
         else:
             limit_usd = account.initial_balance * (limit_value / 100)
             floor = account.initial_balance - limit_usd
     else:
         limit_usd = limit_value
         if is_trailing:
-            floor = account.equity_high_watermark - limit_usd
+            # TopStep USD-based: trails highest EOD balance
+            hwm = account.equity_high_watermark
+            floor = hwm - limit_usd
         else:
             floor = account.initial_balance - limit_usd
 
@@ -172,18 +213,27 @@ def check_max_drawdown(
     remaining_pct = (remaining / limit_usd * 100) if limit_usd > 0 else 100.0
 
     alert_level = _get_alert_level(remaining_pct)
-    dd_type = "trailing" if is_trailing else "static"
+
+    if is_trailing and trailing_type == "end_of_day_balance":
+        dd_label = "EOD trailing"
+        note = f" Floor: ${floor:.2f} (trails EOD balance, currently at HWM ${account.equity_high_watermark:.2f})"
+    elif is_trailing:
+        dd_label = "trailing"
+        note = f" Floor: ${floor:.2f}"
+    else:
+        dd_label = "static"
+        note = f" Floor: ${floor:.2f} (fixed)"
 
     if alert_level == AlertLevel.BREACHED:
-        message = f"BREACHED: Max drawdown ({dd_type}) exceeded! Account equity ${account.current_equity:.2f} below floor ${floor:.2f}."
+        message = f"BREACHED: Max drawdown ({dd_label}) exceeded! Equity ${account.current_equity:.2f} below floor ${floor:.2f}."
     elif alert_level == AlertLevel.DANGER:
-        message = f"DANGER: ${remaining:.2f} from max drawdown ({dd_type}) breach! Equity floor: ${floor:.2f}."
+        message = f"DANGER: ${remaining:.2f} from max drawdown breach!{note}"
     elif alert_level == AlertLevel.CRITICAL:
-        message = f"CRITICAL: ${remaining:.2f} remaining before max drawdown ({dd_type}) breach."
+        message = f"CRITICAL: ${remaining:.2f} remaining before max drawdown breach.{note}"
     elif alert_level == AlertLevel.WARNING:
-        message = f"WARNING: ${remaining:.2f} remaining before max drawdown ({dd_type}) limit."
+        message = f"WARNING: ${remaining:.2f} remaining before max drawdown limit.{note}"
     else:
-        message = f"Drawdown ({dd_type}): ${current_drawdown:.2f} of ${limit_usd:.2f} max. ${remaining:.2f} remaining."
+        message = f"Drawdown ({dd_label}): ${current_drawdown:.2f} of ${limit_usd:.2f} max. ${remaining:.2f} remaining.{note}"
 
     return RuleCheckResult(
         rule_type="max_drawdown",

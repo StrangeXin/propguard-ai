@@ -1,97 +1,40 @@
 {
   "firm_name": "Breakout",
-  "version": 1,
-  "effective_date": "2026-04-14",
+  "version": 2,
+  "effective_date": "2026-04-16",
   "website": "https://www.breakoutprop.com",
-  "description": "Crypto-native prop firm. 1-step and 2-step evaluations. Supports BTC, ETH, and altcoins with leverage.",
+  "description": "Crypto-native prop firm. Multiple evaluation types. Supports BTC, ETH, and altcoins.",
   "markets": ["crypto"],
   "evaluation_type": "1-step_and_2-step",
   "accounts": [
-    {
-      "size": 5000,
-      "currency": "USD",
-      "evaluation": "1-step",
-      "profit_target_pct": 10,
-      "max_drawdown_pct": 6,
-      "drawdown_type": "static"
-    },
-    {
-      "size": 10000,
-      "currency": "USD",
-      "evaluation": "1-step",
-      "profit_target_pct": 10,
-      "max_drawdown_pct": 6,
-      "drawdown_type": "static"
-    },
-    {
-      "size": 25000,
-      "currency": "USD",
-      "evaluation": "1-step",
-      "profit_target_pct": 10,
-      "max_drawdown_pct": 6,
-      "drawdown_type": "static"
-    },
-    {
-      "size": 50000,
-      "currency": "USD",
-      "evaluation": "1-step",
-      "profit_target_pct": 10,
-      "max_drawdown_pct": 6,
-      "drawdown_type": "static"
-    },
-    {
-      "size": 100000,
-      "currency": "USD",
-      "evaluation": "1-step",
-      "profit_target_pct": 10,
-      "max_drawdown_pct": 6,
-      "drawdown_type": "static"
-    },
-    {
-      "size": 5000,
-      "currency": "USD",
-      "evaluation": "2-step",
-      "profit_target_phase1_pct": 5,
-      "profit_target_phase2_pct": 10,
-      "max_drawdown_pct": null,
-      "drawdown_type": "trailing"
-    },
-    {
-      "size": 50000,
-      "currency": "USD",
-      "evaluation": "2-step",
-      "profit_target_phase1_pct": 5,
-      "profit_target_phase2_pct": 10,
-      "max_drawdown_pct": null,
-      "drawdown_type": "trailing"
-    },
-    {
-      "size": 100000,
-      "currency": "USD",
-      "evaluation": "2-step",
-      "profit_target_phase1_pct": 5,
-      "profit_target_phase2_pct": 10,
-      "max_drawdown_pct": null,
-      "drawdown_type": "trailing"
-    }
+    { "size": 5000, "currency": "USD", "evaluation": "1-step-classic", "profit_target_pct": 10, "max_drawdown_pct": 6, "daily_loss_pct": 4, "drawdown_type": "static" },
+    { "size": 10000, "currency": "USD", "evaluation": "1-step-classic", "profit_target_pct": 10, "max_drawdown_pct": 6, "daily_loss_pct": 4, "drawdown_type": "static" },
+    { "size": 25000, "currency": "USD", "evaluation": "1-step-classic", "profit_target_pct": 10, "max_drawdown_pct": 6, "daily_loss_pct": 4, "drawdown_type": "static" },
+    { "size": 50000, "currency": "USD", "evaluation": "1-step-classic", "profit_target_pct": 10, "max_drawdown_pct": 6, "daily_loss_pct": 4, "drawdown_type": "static" },
+    { "size": 100000, "currency": "USD", "evaluation": "1-step-classic", "profit_target_pct": 10, "max_drawdown_pct": 6, "daily_loss_pct": 4, "drawdown_type": "static" }
   ],
   "rules": [
     {
-      "type": "max_drawdown",
-      "value": 6,
-      "unit": "percent",
-      "description": "1-step challenge: 6% maximum drawdown, static (non-trailing). 2-step challenge: trailing drawdown.",
-      "trailing": false,
-      "trailing_note": "1-step = static, 2-step = trailing",
-      "calculation_base": "initial_balance",
+      "type": "daily_loss",
+      "value": 4,
+      "unit": "percent_of_initial_balance",
+      "description": "Daily loss limit is 4% of initial balance for Classic accounts (3% for Elite). If equity reaches this limit at any point, account is breached permanently. All positions closed, account forfeited.",
+      "calculation_base": "equity",
       "breach_action": "account_violation"
     },
     {
-      "type": "daily_loss",
-      "value": null,
-      "unit": "percent",
-      "description": "Breakout does not enforce a separate daily loss limit. Only the overall max drawdown applies.",
-      "has_daily_limit": false
+      "type": "max_drawdown",
+      "value": 6,
+      "unit": "percent_of_initial_balance",
+      "description": "Maximum drawdown is 6% for 1-Step Classic. Static (non-trailing) — floor never moves. If equity reaches this limit at any point, account is breached permanently. Pro accounts: 5%, Turbo accounts: 3%.",
+      "trailing": false,
+      "calculation_base": "initial_balance",
+      "breach_action": "account_violation",
+      "variants": {
+        "classic": 6,
+        "pro": 5,
+        "turbo": 3
+      }
     },
     {
       "type": "time_limit",
@@ -107,11 +50,7 @@
     },
     {
       "type": "leverage",
-      "value_by_asset": {
-        "BTC": 5,
-        "ETH": 5,
-        "altcoins": 2
-      },
+      "value_by_asset": { "BTC": 5, "ETH": 5, "altcoins": 2 },
       "unit": "multiplier",
       "description": "Up to 5x leverage on BTC and ETH, 2x on altcoins."
     },
@@ -122,20 +61,11 @@
       "description": "No news trading restrictions. No consistency rules."
     }
   ],
-  "profit_split": {
-    "base": 80,
-    "max": 90,
-    "unit": "percent",
-    "scaling": "90% available as paid add-on"
-  },
-  "payout": {
-    "method": "USDC on Ethereum",
-    "processing_time": "24 hours",
-    "type": "on-demand"
-  },
+  "profit_split": { "base": 80, "max": 90, "unit": "percent" },
+  "payout": { "method": "USDC on Ethereum", "processing_time": "24 hours", "type": "on-demand" },
   "sources": [
     "https://www.breakoutprop.com/",
-    "https://velotrade.com/blog/best-crypto-prop-firms",
-    "https://www.cryptoninjas.net/crypto/best-prop-firms/"
+    "https://www.breakoutprop.com/article/mastering-drawdown-a-guide-to-equity-limits-at-breakout/",
+    "https://www.quantvps.com/blog/breakout-crypto-prop-firm-rules"
   ]
 }
