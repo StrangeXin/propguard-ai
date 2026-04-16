@@ -132,11 +132,11 @@ export default function Dashboard() {
 
           <ChallengeProgress accountId={accountId} firmName={firmName} accountSize={accountSize} />
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">
               {t("compliance.title")}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
               {compliance.checks.map((check, i) => (
                 <RuleCard key={`${check.rule_type}-${i}`} check={check} />
               ))}

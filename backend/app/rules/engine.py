@@ -433,7 +433,7 @@ def check_time_limit(
         now = datetime.now(timezone.utc)
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
-        elapsed = (now - start).days
+        elapsed = max((now - start).days, 0)
         remaining = max(limit_days - elapsed, 0)
         remaining_pct = (remaining / limit_days * 100) if limit_days > 0 else 100
         alert_level = _get_alert_level(remaining_pct)
