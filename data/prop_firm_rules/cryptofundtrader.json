@@ -34,6 +34,12 @@
       "breach_action": "account_violation"
     },
     {
+      "type": "profit_target",
+      "value": 8,
+      "unit": "percent_of_initial_balance",
+      "description": "2-Phase: 8% profit target Phase 1, 5% Phase 2."
+    },
+    {
       "type": "time_limit",
       "value": null,
       "unit": "days",

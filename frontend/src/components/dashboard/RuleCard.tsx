@@ -12,9 +12,8 @@ const alertColors: Record<AlertLevel, { bg: string; text: string; dot: string; p
   breached: { bg: "bg-red-950/30", text: "text-red-300", dot: "bg-red-600 animate-pulse", progress: "[&>div]:bg-red-600" },
 };
 
-// Rules that show dollar amounts vs other units
-const DOLLAR_RULES = new Set(["daily_loss", "max_drawdown"]);
-const HIDE_PROGRESS = new Set(["news_restriction", "time_limit"]);
+const DOLLAR_RULES = new Set(["daily_loss", "max_drawdown", "profit_target"]);
+const HIDE_PROGRESS = new Set(["news_restriction", "time_limit", "best_day_rule"]);
 
 export function RuleCard({ check }: { check: RuleCheckResult }) {
   const { t, locale } = useI18n();
@@ -29,11 +28,20 @@ export function RuleCard({ check }: { check: RuleCheckResult }) {
     trading_hours: locale === "zh" ? "交易时段" : "Hours",
     leverage: locale === "zh" ? "杠杆" : "Leverage",
     time_limit: locale === "zh" ? "时间限制" : "Time Limit",
+    profit_target: locale === "zh" ? "盈利目标" : "Profit Target",
+    best_day_rule: locale === "zh" ? "最佳日规则" : "Best Day Rule",
   };
 
   const isDollar = DOLLAR_RULES.has(check.rule_type);
+  const isProfit = check.rule_type === "profit_target";
   const showProgress = !HIDE_PROGRESS.has(check.rule_type) && check.limit_value > 0;
-  const usedPct = showProgress ? Math.min((1 - check.remaining_pct / 100) * 100, 100) : 0;
+  // For profit_target: remaining_pct = progress towards target (higher = better)
+  // For loss rules: remaining_pct = remaining before breach (higher = safer)
+  const usedPct = showProgress
+    ? isProfit
+      ? Math.min(check.remaining_pct, 100)  // profit: show progress
+      : Math.min((1 - check.remaining_pct / 100) * 100, 100)  // loss: show used
+    : 0;
 
   const formatValue = (v: number) => {
     if (isDollar) return `$${v.toLocaleString("en", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -48,6 +56,10 @@ export function RuleCard({ check }: { check: RuleCheckResult }) {
     if (check.rule_type === "news_restriction") return check.alert_level === "safe" ? "OK" : "Check";
     if (check.rule_type === "trading_hours") return check.alert_level === "safe" ? "OK" : "Weekend";
     if (check.rule_type === "leverage") return check.alert_level === "safe" ? "OK" : "Over";
+    if (check.rule_type === "best_day_rule") return `<${check.limit_value}%`;
+    if (check.rule_type === "profit_target") {
+      return `$${check.current_value.toLocaleString("en", { maximumFractionDigits: 0 })}/$${check.limit_value.toLocaleString("en", { maximumFractionDigits: 0 })}`;
+    }
     if (check.rule_type === "time_limit") {
       const days = Math.max(check.remaining, 0);
       return `${days.toFixed(0)}d left`;
@@ -71,10 +83,10 @@ export function RuleCard({ check }: { check: RuleCheckResult }) {
         <span className="text-sm text-zinc-300">{ruleLabels[check.rule_type] || check.rule_type}</span>
       </div>
 
-      {/* Progress bar (only for dollar rules) */}
+      {/* Progress bar */}
       {showProgress && (
         <div className="w-24 shrink-0">
-          <Progress value={usedPct} className={`h-1.5 bg-zinc-800 ${style.progress}`} />
+          <Progress value={usedPct} className={`h-1.5 bg-zinc-800 ${isProfit ? "[&>div]:bg-blue-500" : style.progress}`} />
         </div>
       )}
 

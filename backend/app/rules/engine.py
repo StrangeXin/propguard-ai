@@ -451,6 +451,65 @@ def check_time_limit(
     return None
 
 
+def check_profit_target(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Check profit target progress."""
+    target_value = _resolve_rule_value(rule, account.account_size)
+    if target_value is None:
+        return None
+
+    unit = rule.get("unit", "")
+    if "percent" in unit:
+        target_usd = account.initial_balance * (target_value / 100)
+        target_pct = target_value
+    else:
+        target_usd = target_value
+        target_pct = (target_usd / account.initial_balance * 100) if account.initial_balance > 0 else 0
+    current_profit = max(account.total_pnl, 0)
+    progress_pct = (current_profit / target_usd * 100) if target_usd > 0 else 0
+    remaining = max(target_usd - current_profit, 0)
+
+    if progress_pct >= 100:
+        alert_level = AlertLevel.SAFE
+        message = f"Profit target reached! ${current_profit:,.2f} / ${target_usd:,.2f} ({target_pct}%)"
+    else:
+        alert_level = AlertLevel.SAFE
+        message = f"Profit: ${current_profit:,.2f} / ${target_usd:,.2f} ({progress_pct:.1f}% of {target_pct}% target)"
+
+    return RuleCheckResult(
+        rule_type="profit_target",
+        rule_description=rule.get("description", "Profit target"),
+        current_value=round(current_profit, 2),
+        limit_value=round(target_usd, 2),
+        remaining=round(remaining, 2),
+        remaining_pct=round(min(progress_pct, 100), 1),
+        alert_level=alert_level,
+        message=message,
+    )
+
+
+def check_best_day_rule(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Check best day rule — single day profit cannot exceed X% of total profit."""
+    limit_pct = rule.get("value")
+    if limit_pct is None:
+        return None
+
+    # We don't have per-day P&L history, so show the rule as informational
+    return RuleCheckResult(
+        rule_type="best_day_rule",
+        rule_description=rule.get("description", f"Best day profit cannot exceed {limit_pct}% of total profit"),
+        current_value=0,
+        limit_value=float(limit_pct),
+        remaining=999999,
+        remaining_pct=100,
+        alert_level=AlertLevel.SAFE,
+        message=f"Best day rule: No single day can exceed {limit_pct}% of total profit.",
+    )
+
+
 # Map rule types to checker functions
 RULE_CHECKERS = {
     "daily_loss": check_daily_loss,
@@ -461,6 +520,8 @@ RULE_CHECKERS = {
     "trading_hours": check_trading_hours,
     "leverage": check_leverage,
     "time_limit": check_time_limit,
+    "profit_target": check_profit_target,
+    "best_day_rule": check_best_day_rule,
 }
 
 

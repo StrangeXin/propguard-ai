@@ -80,6 +80,18 @@
       "description": "14-day trading period for Free Trial. Regular challenges may have different/no time limits."
     },
     {
+      "type": "profit_target",
+      "value": 5,
+      "unit": "percent_of_initial_balance",
+      "description": "2-Step: 5% profit target per phase. Must reach this to pass."
+    },
+    {
+      "type": "best_day_rule",
+      "value": 50,
+      "unit": "percent_of_total_profit",
+      "description": "1-Step only: Single best day cannot exceed 50% of total profit. Not applied in 2-Step."
+    },
+    {
       "type": "news_restriction",
       "value": true,
       "unit": "boolean",
