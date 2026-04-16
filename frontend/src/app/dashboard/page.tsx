@@ -69,7 +69,24 @@ export default function Dashboard() {
       {/* Top bar */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="flex gap-3">
-          <Select value={firmName} onValueChange={(v) => { if (!v) return; setFirmName(v); const found = FIRMS.find(f => f.name === v); setAccountSize(found ? found.sizes[2] : 50000); }}>
+          <Select value={firmName} onValueChange={(v) => {
+            if (!v) return;
+            setFirmName(v);
+            const found = FIRMS.find(f => f.name === v);
+            if (found) {
+              // If current size exists in new firm, keep it; otherwise use the largest common size or middle
+              const newSizes = found.sizes;
+              if (newSizes.includes(accountSize)) {
+                // Keep current size
+              } else {
+                // Pick the closest available size
+                const closest = newSizes.reduce((prev, curr) =>
+                  Math.abs(curr - accountSize) < Math.abs(prev - accountSize) ? curr : prev
+                );
+                setAccountSize(closest);
+              }
+            }
+          }}>
             <SelectTrigger className="w-40 bg-zinc-900 border-zinc-800 text-white">
               <SelectValue placeholder="Select firm" />
             </SelectTrigger>
