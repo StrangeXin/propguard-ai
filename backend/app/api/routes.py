@@ -738,6 +738,21 @@ async def ai_trade_analyze(body: AITradeRequest, authorization: str = Header(def
         evaluation_type=body.evaluation_type,
         dry_run=body.dry_run,
     )
+
+    # Save to database
+    from app.services.database import db_save_ai_trade_log
+    db_save_ai_trade_log(
+        user_id=user.get("id"),
+        strategy_name=body.strategy.get("name", ""),
+        symbols=",".join(body.strategy.get("symbols", [])),
+        analysis=result.get("analysis", ""),
+        actions_planned=result.get("actions_planned", 0),
+        actions_executed=result.get("actions_executed", 0),
+        prompt=result.get("prompt", ""),
+        result=result,
+        dry_run=body.dry_run,
+    )
+
     import json as _json
     return _json.loads(_json.dumps(result, default=str))
 
@@ -810,6 +825,19 @@ async def ai_trade_session_detail(session_id: str, authorization: str = Header(d
 
     import json as _json
     return _json.loads(_json.dumps(status, default=str))
+
+
+@router.get("/api/ai-trade/logs")
+async def ai_trade_logs(limit: int = 20, authorization: str = Header(default="")):
+    """Get AI trading analysis history."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    from app.services.database import db_get_ai_trade_logs
+    logs = db_get_ai_trade_logs(user_id=user.get("id"), limit=min(limit, 50))
+    return {"logs": logs}
 
 
 ## ── Payments ────────────────────────────────────────────────────

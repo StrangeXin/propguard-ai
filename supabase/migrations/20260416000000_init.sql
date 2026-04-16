@@ -66,3 +66,20 @@ create table if not exists signal_source_stats (
 create index if not exists idx_signals_user on signals(user_id, received_at desc);
 create index if not exists idx_alerts_user on alerts(user_id, created_at desc);
 create index if not exists idx_trading_accounts_user on trading_accounts(user_id);
+
+-- AI Trade Logs
+create table if not exists ai_trade_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete cascade,
+  strategy_name text,
+  symbols text,
+  analysis text,
+  actions_planned int default 0,
+  actions_executed int default 0,
+  prompt text,
+  result jsonb,
+  dry_run boolean default true,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_ai_trade_logs_user on ai_trade_logs(user_id, created_at desc);

@@ -177,6 +177,60 @@ def db_get_alerts(user_id: str | None = None, account_id: str | None = None, lim
         return []
 
 
+## ── AI Trade Logs ───────────────────────────────────────────────
+
+
+def db_save_ai_trade_log(
+    user_id: str | None,
+    strategy_name: str,
+    symbols: str,
+    analysis: str,
+    actions_planned: int,
+    actions_executed: int,
+    prompt: str,
+    result: dict,
+    dry_run: bool,
+) -> dict | None:
+    db = get_db()
+    if not db:
+        return None
+    try:
+        import json
+        row = {
+            "strategy_name": strategy_name,
+            "symbols": symbols,
+            "analysis": analysis[:2000] if analysis else "",
+            "actions_planned": actions_planned,
+            "actions_executed": actions_executed,
+            "prompt": prompt[:5000] if prompt else "",
+            "result": json.dumps(result, default=str)[:5000] if result else "{}",
+            "dry_run": dry_run,
+        }
+        if user_id:
+            row["user_id"] = user_id
+        result_db = db.table("ai_trade_logs").insert(row).execute()
+        if result_db.data:
+            return result_db.data[0]
+    except Exception as e:
+        logger.error(f"db_save_ai_trade_log: {e}")
+    return None
+
+
+def db_get_ai_trade_logs(user_id: str | None = None, limit: int = 20) -> list[dict]:
+    db = get_db()
+    if not db:
+        return []
+    try:
+        q = db.table("ai_trade_logs").select("*").order("created_at", desc=True).limit(limit)
+        if user_id:
+            q = q.eq("user_id", user_id)
+        result = q.execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"db_get_ai_trade_logs: {e}")
+        return []
+
+
 ## ── Trading Accounts ────────────────────────────────────────────
 
 

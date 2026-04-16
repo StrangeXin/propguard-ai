@@ -86,6 +86,8 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
   const [executing, setExecuting] = useState(false);
 
   const [sessions, setSessions] = useState<AnyResult[]>([]);
+  const [historyLogs, setHistoryLogs] = useState<AnyResult[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
@@ -104,6 +106,17 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
+      }
+    } catch { /* silent */ }
+  }, [token]);
+
+  const fetchHistory = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/ai-trade/logs?limit=10`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryLogs(data.logs || []);
       }
     } catch { /* silent */ }
   }, [token]);
@@ -131,9 +144,9 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
       });
       const data = await res.json();
       setPendingResult(data);
-      // Always show confirmation dialog when AI responds (with or without actions)
       if (!data.error) {
         setShowConfirm(true);
+        fetchHistory();
       }
     } catch {
       setPendingResult({ error: "Network error" });
@@ -223,26 +236,28 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
               className="w-full bg-zinc-800 text-white rounded px-3 py-2 text-xs font-mono resize-none focus:outline-none leading-relaxed placeholder-zinc-600" />
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex bg-zinc-800 rounded overflow-hidden">
-              {INTERVALS.map((iv) => (
-                <button key={iv.value} onClick={() => setInterval_(iv.value)}
-                  className={`px-2 py-1 text-xs transition-colors ${interval === iv.value ? "bg-zinc-600 text-white" : "text-zinc-500"}`}>
-                  {iv.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="flex gap-2">
             <button onClick={analyzeAndPropose} disabled={loading}
               className="flex-1 py-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-colors">
-              {loading ? t.analyzing : t.analyze}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                  {t.analyzing}
+                </span>
+              ) : t.analyze}
             </button>
-            <button onClick={startAuto} disabled={loading}
-              className="flex-1 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-white text-sm rounded-lg transition-colors">
-              {t.startAuto}
-            </button>
+            <div className="flex items-center gap-1">
+              <select value={interval} onChange={(e) => setInterval_(e.target.value)}
+                className="bg-zinc-800 text-zinc-400 text-xs rounded px-2 py-2 focus:outline-none">
+                {INTERVALS.map((iv) => (
+                  <option key={iv.value} value={iv.value}>{iv.label}</option>
+                ))}
+              </select>
+              <button onClick={startAuto} disabled={loading}
+                className="py-2 px-3 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-white text-xs rounded-lg transition-colors whitespace-nowrap">
+                {t.startAuto}
+              </button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -377,6 +392,54 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
           ))}
         </div>
       )}
+
+      {/* History Logs */}
+      <div className="space-y-2">
+        <button onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchHistory(); }}
+          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+          {showHistory
+            ? (locale === "zh" ? "收起分析记录" : "Hide History")
+            : (locale === "zh" ? `查看分析记录 (${historyLogs.length})` : `View History (${historyLogs.length})`)}
+        </button>
+
+        {showHistory && historyLogs.length > 0 && (
+          <div className="space-y-2">
+            {historyLogs.map((log: AnyResult) => (
+              <div key={log.id} className="bg-zinc-900/50 rounded-lg px-4 py-2.5 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white font-medium">{log.strategy_name}</span>
+                    <span className="text-[10px] text-zinc-500">{log.symbols}</span>
+                    {log.actions_executed > 0 && (
+                      <Badge className="bg-green-900 text-green-300 text-[10px]">
+                        {log.actions_executed} {locale === "zh" ? "已执行" : "executed"}
+                      </Badge>
+                    )}
+                    {log.actions_planned === 0 && (
+                      <Badge className="bg-zinc-800 text-zinc-400 text-[10px]">
+                        {locale === "zh" ? "无操作" : "no action"}
+                      </Badge>
+                    )}
+                    {log.dry_run && log.actions_planned > 0 && log.actions_executed === 0 && (
+                      <Badge className="bg-yellow-900 text-yellow-300 text-[10px]">
+                        {locale === "zh" ? "未确认" : "not confirmed"}
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-zinc-600">
+                    {new Date(log.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 line-clamp-2">{log.analysis}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showHistory && historyLogs.length === 0 && (
+          <p className="text-xs text-zinc-600">{locale === "zh" ? "暂无分析记录" : "No analysis history yet"}</p>
+        )}
+      </div>
     </div>
   );
 }
