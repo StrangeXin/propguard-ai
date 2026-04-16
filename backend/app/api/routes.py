@@ -66,15 +66,22 @@ async def get_compliance(account_id: str, firm_name: str, account_size: int):
     """
     try:
         account_state = await broker.get_account_state(account_id, firm_name, account_size)
+
+        # If broker not connected, use a placeholder account state so rules still show
         if account_state is None:
-            return {
-                "status": "connecting",
-                "message": "Connecting to broker... Please wait.",
-                "broker_status": {
-                    "metaapi": broker.is_metaapi_ready,
-                    "okx": broker.is_okx_ready,
-                },
-            }
+            from app.models.account import AccountState
+            account_state = AccountState(
+                account_id=account_id,
+                firm_name=firm_name,
+                account_size=account_size,
+                initial_balance=float(account_size),
+                current_balance=float(account_size),
+                current_equity=float(account_size),
+                daily_pnl=0,
+                total_pnl=0,
+                equity_high_watermark=float(account_size),
+                broker_connected=False,
+            )
 
         report = evaluate_compliance(account_state)
 

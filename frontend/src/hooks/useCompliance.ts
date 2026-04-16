@@ -5,7 +5,6 @@ import type { AccountState, ComplianceReport } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 const POLL_INTERVAL = 3000;
-const WS_MAX_RETRIES = 5;
 
 interface UseComplianceOptions {
   accountId: string;
@@ -36,14 +35,9 @@ export function useCompliance({
   const [reconnecting, setReconnecting] = useState(false);
   const [brokerConnecting, setBrokerConnecting] = useState(false);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
-  const intentionalClose = useRef(false);
-  const wsRetries = useRef(0);
-  const modeRef = useRef<"ws" | "poll">("ws");
-
-  // REST poll
-  const fetchOnce = useCallback(async () => {
+  // REST fetch — always works, used as primary + fallback
+  const fetchRest = useCallback(async () => {
+    if (!enabled || !accountId) return;
     try {
       const res = await fetch(
         `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}`
@@ -62,108 +56,90 @@ export function useCompliance({
     } catch {
       // silent
     }
-  }, [accountId, firmName, accountSize]);
-
-  const startPoll = useCallback(() => {
-    if (pollRef.current) return;
-    modeRef.current = "poll";
-    fetchOnce();
-    pollRef.current = setInterval(fetchOnce, POLL_INTERVAL);
-  }, [fetchOnce]);
-
-  const stopPoll = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
-
-  const cleanup = () => {
-    stopPoll();
-    if (wsRef.current) {
-      intentionalClose.current = true;
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-  };
-
-  // WebSocket
-  const connectWs = useCallback(() => {
-    if (!enabled || !accountId) return;
-
-    if (wsRetries.current >= WS_MAX_RETRIES) {
-      // Give up WS, use polling permanently
-      startPoll();
-      return;
-    }
-
-    const wsUrl = API_BASE.replace("http", "ws");
-    const url = `${wsUrl}/ws/compliance/${accountId}?firm_name=${firmName}&account_size=${accountSize}`;
-
-    try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-      modeRef.current = "ws";
-
-      ws.onopen = () => {
-        setConnected(true);
-        setError(null);
-        setReconnecting(false);
-        wsRetries.current = 0;
-        stopPoll();
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "compliance_update") {
-            setBrokerConnecting(false);
-            setAccount(data.account);
-            setCompliance(data.compliance);
-          } else if (data.type === "broker_connecting") {
-            setBrokerConnecting(true);
-          }
-        } catch { /* ignore */ }
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (intentionalClose.current) {
-          intentionalClose.current = false;
-          return;
-        }
-        setConnected(false);
-        wsRetries.current += 1;
-
-        if (wsRetries.current >= WS_MAX_RETRIES) {
-          // Switch to polling
-          startPoll();
-        } else {
-          // Retry WS with backoff
-          setReconnecting(true);
-          const delay = Math.min(1000 * Math.pow(2, wsRetries.current), 15000);
-          setTimeout(connectWs, delay);
-        }
-      };
-
-      ws.onerror = () => {
-        // onclose will fire after this
-      };
-    } catch {
-      wsRetries.current += 1;
-      startPoll();
-    }
-  }, [accountId, firmName, accountSize, enabled, startPoll]);
+  }, [accountId, firmName, accountSize, enabled]);
 
   useEffect(() => {
-    cleanup();
-    // Clear stale data from previous firm/account
+    // Clear old data immediately on param change
     setAccount(null);
     setCompliance(null);
+    setConnected(false);
     setBrokerConnecting(false);
-    wsRetries.current = 0;
-    modeRef.current = "ws";
-    connectWs();
 
-    return cleanup;
-  }, [connectWs]);
+    if (!enabled || !accountId) return;
+
+    // 1. Immediate REST fetch — get data on screen ASAP
+    fetchRest();
+
+    // 2. Start polling as reliable baseline
+    const pollInterval = setInterval(fetchRest, POLL_INTERVAL);
+
+    // 3. Try WebSocket for real-time upgrade
+    let ws: WebSocket | null = null;
+    let wsTimeout: NodeJS.Timeout | null = null;
+
+    const tryWs = () => {
+      const wsUrl = API_BASE.replace("http", "ws");
+      const url = `${wsUrl}/ws/compliance/${accountId}?firm_name=${firmName}&account_size=${accountSize}`;
+
+      try {
+        ws = new WebSocket(url);
+
+        // Give WS 5 seconds to connect, otherwise stay on polling
+        wsTimeout = setTimeout(() => {
+          if (ws && ws.readyState !== WebSocket.OPEN) {
+            ws.close();
+            ws = null;
+          }
+        }, 5000);
+
+        ws.onopen = () => {
+          if (wsTimeout) clearTimeout(wsTimeout);
+          // WS connected — stop polling, use WS
+          clearInterval(pollInterval);
+          setConnected(true);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "compliance_update") {
+              setBrokerConnecting(false);
+              setAccount(data.account);
+              setCompliance(data.compliance);
+            } else if (data.type === "broker_connecting") {
+              setBrokerConnecting(true);
+            }
+          } catch { /* ignore */ }
+        };
+
+        ws.onclose = () => {
+          if (wsTimeout) clearTimeout(wsTimeout);
+          ws = null;
+          // Don't restart polling here — the interval is already running
+          // unless it was cleared when WS connected
+          setConnected(false);
+        };
+
+        ws.onerror = () => {
+          // onclose will fire
+        };
+      } catch {
+        // WS not available, polling continues
+      }
+    };
+
+    tryWs();
+
+    // Cleanup
+    return () => {
+      clearInterval(pollInterval);
+      if (wsTimeout) clearTimeout(wsTimeout);
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+    };
+  }, [accountId, firmName, accountSize, enabled, fetchRest]);
 
   return { account, compliance, connected, error, reconnecting, brokerConnecting };
 }

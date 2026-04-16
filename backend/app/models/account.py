@@ -31,6 +31,7 @@ class AccountState(BaseModel):
     daily_pnl: float  # today's realized + unrealized
     total_pnl: float  # since challenge start
     equity_high_watermark: float
+    broker_connected: bool = True
     open_positions: list[Position] = []
     trading_days_count: int = 0
     challenge_start_date: datetime | None = None

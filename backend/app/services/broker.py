@@ -89,14 +89,25 @@ class BrokerAPIClient:
 
     async def get_account_state(self, account_id: str, firm_name: str, account_size: int) -> AccountState | None:
         """Get real account state. Returns None if broker not connected yet."""
+        import asyncio
 
-        # OKX for crypto prop firms
-        if firm_name.lower() == "breakout" and self._has_okx:
-            return await self._get_okx_state(account_id, firm_name, account_size)
+        try:
+            # OKX for crypto prop firms
+            if firm_name.lower() == "breakout" and self._has_okx:
+                return await asyncio.wait_for(
+                    self._get_okx_state(account_id, firm_name, account_size),
+                    timeout=10,
+                )
 
-        # MetaApi for forex/futures
-        if self._metaapi_ready and self._connection:
-            return await self._get_metaapi_state(account_id, firm_name, account_size)
+            # MetaApi for forex/futures
+            if self._metaapi_ready and self._connection:
+                return await asyncio.wait_for(
+                    self._get_metaapi_state(account_id, firm_name, account_size),
+                    timeout=10,
+                )
+        except asyncio.TimeoutError:
+            logger.warning(f"Broker data fetch timed out for {firm_name}")
+            return None
 
         # Not connected yet
         return None
