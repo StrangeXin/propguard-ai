@@ -5,7 +5,7 @@ account state against them in real-time.
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models.account import (
     AccountState,
@@ -310,12 +310,16 @@ def check_news_restriction(
         )
 
     # Check if any position was opened recently (potential news trade)
-    from datetime import datetime, timedelta
-    now = datetime.now()
-    recent_positions = [
-        p for p in account.open_positions
-        if (now - p.opened_at).total_seconds() < 300  # opened in last 5 min
-    ]
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    recent_positions = []
+    for p in account.open_positions:
+        try:
+            opened = p.opened_at.replace(tzinfo=timezone.utc) if p.opened_at.tzinfo is None else p.opened_at
+            if (now - opened).total_seconds() < 300:
+                recent_positions.append(p)
+        except Exception:
+            pass
 
     if recent_positions:
         return RuleCheckResult(
@@ -340,8 +344,8 @@ def check_trading_hours(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
     """Check if current time is within allowed trading hours."""
-    from datetime import datetime
-    now = datetime.now()
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     hour = now.hour
     weekday = now.weekday()  # 0=Mon, 6=Sun
 
@@ -424,7 +428,12 @@ def check_time_limit(
     limit_days = float(rule["value"])
     if account.challenge_start_date:
         from datetime import datetime
-        elapsed = (datetime.now() - account.challenge_start_date).days
+        from datetime import timezone
+        start = account.challenge_start_date
+        now = datetime.now(timezone.utc)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        elapsed = (now - start).days
         remaining = max(limit_days - elapsed, 0)
         remaining_pct = (remaining / limit_days * 100) if limit_days > 0 else 100
         alert_level = _get_alert_level(remaining_pct)
@@ -484,7 +493,7 @@ def evaluate_compliance(account: AccountState) -> ComplianceReport:
     return ComplianceReport(
         account_id=account.account_id,
         firm_name=account.firm_name,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
         overall_status=overall,
         checks=checks,
     )
