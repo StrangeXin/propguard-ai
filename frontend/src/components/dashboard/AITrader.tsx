@@ -131,7 +131,8 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
       });
       const data = await res.json();
       setPendingResult(data);
-      if (data.actions_planned > 0) {
+      // Always show confirmation dialog when AI responds (with or without actions)
+      if (!data.error) {
         setShowConfirm(true);
       }
     } catch {
@@ -291,15 +292,21 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
               </details>
             )}
 
+            {pendingResult.actions_planned === 0 && (
+              <p className="text-sm text-zinc-400 text-center py-2">{t.noAction}</p>
+            )}
+
             <div className="flex gap-3">
               <button onClick={() => setShowConfirm(false)}
-                className="flex-1 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition-colors">
-                {t.cancel}
+                className={`${pendingResult.actions_planned > 0 ? "flex-1" : "w-full"} py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition-colors`}>
+                {pendingResult.actions_planned > 0 ? t.cancel : "OK"}
               </button>
-              <button onClick={confirmExecute} disabled={executing}
-                className="flex-1 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
-                {executing ? "..." : t.confirm}
-              </button>
+              {pendingResult.actions_planned > 0 && (
+                <button onClick={confirmExecute} disabled={executing}
+                  className="flex-1 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
+                  {executing ? "..." : t.confirm}
+                </button>
+              )}
             </div>
           </div>
         </div>
