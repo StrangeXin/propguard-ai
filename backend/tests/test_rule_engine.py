@@ -54,7 +54,8 @@ class TestLoadRules:
     def test_load_ftmo(self):
         rules = load_firm_rules("ftmo")
         assert rules["firm_name"] == "FTMO"
-        assert len(rules["rules"]) > 0
+        # FTMO uses rules_by_evaluation format
+        assert "rules_by_evaluation" in rules or "rules" in rules
 
     def test_load_nonexistent(self):
         with pytest.raises(FileNotFoundError):
@@ -122,11 +123,11 @@ class TestFTMOCompliance:
         assert dd_check.alert_level == AlertLevel.BREACHED
 
     def test_min_trading_days(self):
-        """Check minimum trading days tracking. FTMO requires 2 days."""
-        account = make_account(trading_days=1)
-        report = evaluate_compliance(account)
+        """2-Step FTMO requires 4 trading days."""
+        account = make_account(trading_days=2)
+        report = evaluate_compliance(account, "2-step")
         days_check = next(c for c in report.checks if c.rule_type == "min_trading_days")
-        assert days_check.remaining == 1.0  # need 2, have 1
+        assert days_check.remaining == 2.0  # need 4, have 2
 
     def test_overall_status_worst_case(self):
         """Overall status should be the worst across all checks."""

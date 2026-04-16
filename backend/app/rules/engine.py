@@ -44,7 +44,7 @@ def list_available_firms() -> list[dict]:
             firms.append({
                 "firm_name": data["firm_name"],
                 "markets": data["markets"],
-                "evaluation_type": data.get("evaluation_type", list(data.get("evaluation_types", {}).keys())),
+                "evaluation_type": data.get("evaluation_type") or data.get("evaluation_types", []),
                 "version": data["version"],
                 "effective_date": data["effective_date"],
                 "account_sizes": [a["size"] for a in data.get("accounts", [])],
