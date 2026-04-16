@@ -23,6 +23,41 @@ async def get_metaapi_connection(firm_name: str = "ftmo"):
     return None
 
 
+async def resolve_symbol(symbol: str, conn=None) -> str:
+    """Resolve symbol name for the connected broker.
+    FTMO uses .sim suffix (e.g. EURUSD.sim), other brokers use plain names.
+    """
+    if not conn:
+        conn = await get_metaapi_connection()
+    if not conn:
+        return symbol
+
+    # Try original first
+    try:
+        await conn.get_symbol_price(symbol)
+        return symbol
+    except Exception:
+        pass
+
+    # Try with .sim suffix (FTMO)
+    sim = f"{symbol}.sim"
+    try:
+        await conn.get_symbol_price(sim)
+        return sim
+    except Exception:
+        pass
+
+    # Try with other common suffixes
+    for suffix in [".pro", ".raw", ".m", ".z"]:
+        try:
+            await conn.get_symbol_price(f"{symbol}{suffix}")
+            return f"{symbol}{suffix}"
+        except Exception:
+            pass
+
+    return symbol
+
+
 async def mt5_place_order(
     symbol: str,
     side: str,
@@ -36,22 +71,13 @@ async def mt5_place_order(
         return {"success": False, "error": "MetaApi not connected"}
 
     try:
-        action_type = "ORDER_TYPE_BUY" if side == "buy" else "ORDER_TYPE_SELL"
-
-        order_params = {
-            "symbol": symbol,
-            "actionType": action_type,
-            "volume": volume,
-        }
-        if stop_loss is not None:
-            order_params["stopLoss"] = stop_loss
-        if take_profit is not None:
-            order_params["takeProfit"] = take_profit
+        # Resolve symbol name for this broker (e.g. EURUSD → EURUSD.sim for FTMO)
+        resolved = await resolve_symbol(symbol, conn)
 
         result = await conn.create_market_buy_order(
-            symbol, volume, stop_loss, take_profit
+            resolved, volume, stop_loss, take_profit
         ) if side == "buy" else await conn.create_market_sell_order(
-            symbol, volume, stop_loss, take_profit
+            resolved, volume, stop_loss, take_profit
         )
 
         logger.info(f"MT5 order placed: {side} {symbol} {volume} → {result}")
@@ -177,16 +203,18 @@ async def mt5_create_pending_order(
         return {"success": False, "error": "MetaApi not connected"}
 
     try:
+        resolved = await resolve_symbol(symbol, conn)
+
         if order_type == "limit":
             if side == "buy":
-                result = await conn.create_limit_buy_order(symbol, volume, price, stop_loss, take_profit)
+                result = await conn.create_limit_buy_order(resolved, volume, price, stop_loss, take_profit)
             else:
-                result = await conn.create_limit_sell_order(symbol, volume, price, stop_loss, take_profit)
+                result = await conn.create_limit_sell_order(resolved, volume, price, stop_loss, take_profit)
         else:  # stop order
             if side == "buy":
-                result = await conn.create_stop_buy_order(symbol, volume, price, stop_loss, take_profit)
+                result = await conn.create_stop_buy_order(resolved, volume, price, stop_loss, take_profit)
             else:
-                result = await conn.create_stop_sell_order(symbol, volume, price, stop_loss, take_profit)
+                result = await conn.create_stop_sell_order(resolved, volume, price, stop_loss, take_profit)
 
         logger.info(f"MT5 pending order: {order_type} {side} {symbol} {volume} @ {price} → {result}")
         return {
@@ -242,7 +270,8 @@ async def mt5_get_symbol_spec(symbol: str) -> dict | None:
         return None
 
     try:
-        spec = await conn.get_symbol_specification(symbol)
+        resolved = await resolve_symbol(symbol, conn)
+        spec = await conn.get_symbol_specification(resolved)
         return {
             "symbol": spec.get("symbol"),
             "description": spec.get("description", ""),
@@ -267,7 +296,8 @@ async def mt5_get_symbol_price(symbol: str) -> dict | None:
         return None
 
     try:
-        price = await conn.get_symbol_price(symbol)
+        resolved = await resolve_symbol(symbol, conn)
+        price = await conn.get_symbol_price(resolved)
         return {
             "symbol": price.get("symbol"),
             "bid": price.get("bid"),
