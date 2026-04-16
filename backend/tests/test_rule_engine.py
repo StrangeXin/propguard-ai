@@ -30,7 +30,7 @@ def make_account(
         equity_high_watermark=round(max(initial, equity), 2),
         open_positions=positions or [],
         trading_days_count=trading_days,
-        challenge_start_date=datetime(2026, 4, 1),
+        challenge_start_date=datetime.now(),
     )
 
 
@@ -40,13 +40,13 @@ class TestListFirms:
         names = {f["firm_name"] for f in firms}
         assert "FTMO" in names
         assert "TopStep" in names
-        assert "Breakout" in names
+        assert "CryptoFundTrader" in names
 
     def test_firm_metadata(self):
         firms = list_available_firms()
         ftmo = next(f for f in firms if f["firm_name"] == "FTMO")
         assert "forex" in ftmo["markets"]
-        assert ftmo["evaluation_type"] == "2-step"
+        assert "2-step" in ftmo["evaluation_type"]
         assert 100000 in ftmo["account_sizes"]
 
 
@@ -122,11 +122,11 @@ class TestFTMOCompliance:
         assert dd_check.alert_level == AlertLevel.BREACHED
 
     def test_min_trading_days(self):
-        """Check minimum trading days tracking."""
-        account = make_account(trading_days=2)
+        """Check minimum trading days tracking. FTMO requires 2 days."""
+        account = make_account(trading_days=1)
         report = evaluate_compliance(account)
         days_check = next(c for c in report.checks if c.rule_type == "min_trading_days")
-        assert days_check.remaining == 2.0  # need 4, have 2
+        assert days_check.remaining == 1.0  # need 2, have 1
 
     def test_overall_status_worst_case(self):
         """Overall status should be the worst across all checks."""
@@ -163,19 +163,19 @@ class TestTopStepCompliance:
         assert daily_check.alert_level == AlertLevel.CRITICAL
 
 
-class TestBreakoutCompliance:
-    def test_no_daily_loss_limit(self):
-        """Breakout has no daily loss limit."""
-        account = make_account(firm_name="breakout", account_size=50000, daily_pnl=-2000)
+class TestCryptoFundTraderCompliance:
+    def test_daily_loss_5pct(self):
+        """CFT: 5% daily loss on $100K = $5000."""
+        # Equity dropped $3500 below balance → 70% used = WARNING
+        account = make_account(firm_name="cryptofundtrader", account_size=100000, equity_offset=-3500)
         report = evaluate_compliance(account)
         daily_check = next(c for c in report.checks if c.rule_type == "daily_loss")
-        assert daily_check.alert_level == AlertLevel.SAFE
+        assert daily_check.alert_level == AlertLevel.WARNING
 
-    def test_static_drawdown_6pct(self):
-        """Breakout 1-step: 6% static drawdown."""
-        # $50K account, 6% = $3K limit
-        # Lost $2700 = 90% used = 10% remaining = WARNING
-        account = make_account(firm_name="breakout", account_size=50000, total_pnl=-2700, equity_offset=0)
+    def test_static_drawdown_10pct(self):
+        """CFT: 10% static drawdown on $100K = $10K."""
+        # Lost $9600 = 96% of $10K limit = DANGER
+        account = make_account(firm_name="cryptofundtrader", account_size=100000, total_pnl=-9600, equity_offset=0)
         report = evaluate_compliance(account)
         dd_check = next(c for c in report.checks if c.rule_type == "max_drawdown")
-        assert dd_check.alert_level in (AlertLevel.WARNING, AlertLevel.CRITICAL)
+        assert dd_check.alert_level == AlertLevel.DANGER

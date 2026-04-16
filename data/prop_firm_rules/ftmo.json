@@ -1,26 +1,60 @@
 {
   "firm_name": "FTMO",
-  "version": 2,
+  "version": 3,
   "effective_date": "2026-04-16",
+  "verified": "Official FTMO Free Trial page screenshot",
   "website": "https://ftmo.com",
-  "description": "Global forex/indices/commodities prop firm. 2-step evaluation (Challenge + Verification). No time limit.",
+  "description": "Global prop firm. 2-Step and 1-Step evaluations. MetaTrader 5. Free Trial available.",
   "markets": ["forex", "indices", "commodities", "crypto"],
-  "evaluation_type": "2-step",
+  "evaluation_types": {
+    "2-step": {
+      "profit_target_phase1_pct": 5,
+      "profit_target_phase2_pct": 5,
+      "max_loss_pct": 10,
+      "max_daily_loss_pct": 5,
+      "min_trading_days": 2,
+      "trading_period_days": 14,
+      "trailing": false
+    },
+    "1-step": {
+      "profit_target_pct": 5,
+      "max_loss_pct": 10,
+      "max_daily_loss_pct": 3,
+      "best_day_rule_pct": 50,
+      "min_trading_days": null,
+      "trading_period_days": 14,
+      "trailing": true,
+      "trailing_type": "end_of_day"
+    }
+  },
+  "account_types": {
+    "standard": {
+      "leverage": "1:100",
+      "news_restriction": true,
+      "weekend_holding": false,
+      "description": "Higher leverage, no news trading, no weekend holding"
+    },
+    "swing": {
+      "leverage": "1:30",
+      "news_restriction": false,
+      "weekend_holding": true,
+      "description": "Lower leverage, news trading and weekend holding allowed"
+    }
+  },
   "accounts": [
-    { "size": 10000, "currency": "USD", "challenge_fee": 155, "profit_target_phase1_pct": 10, "profit_target_phase2_pct": 5 },
-    { "size": 25000, "currency": "USD", "challenge_fee": 250, "profit_target_phase1_pct": 10, "profit_target_phase2_pct": 5 },
-    { "size": 50000, "currency": "USD", "challenge_fee": 345, "profit_target_phase1_pct": 10, "profit_target_phase2_pct": 5 },
-    { "size": 100000, "currency": "USD", "challenge_fee": 540, "profit_target_phase1_pct": 10, "profit_target_phase2_pct": 5 },
-    { "size": 200000, "currency": "USD", "challenge_fee": 1080, "profit_target_phase1_pct": 10, "profit_target_phase2_pct": 5 }
+    { "size": 10000, "currency": "USD" },
+    { "size": 25000, "currency": "USD" },
+    { "size": 50000, "currency": "USD" },
+    { "size": 100000, "currency": "USD" },
+    { "size": 200000, "currency": "USD" }
   ],
   "rules": [
     {
       "type": "daily_loss",
       "value": 5,
       "unit": "percent_of_initial_balance",
-      "description": "Maximum daily loss is 5% of INITIAL account balance (not previous day balance). Recalculated at midnight CE(S)T using: max(account_balance_at_midnight, initial_balance) - 5% * initial_balance. Includes closed P/L, floating P/L, commissions, and swaps. Equity-based.",
+      "description": "2-Step: Max daily loss 5% of initial balance. 1-Step: 3%. Includes floating P/L, commissions, swaps. Resets at midnight CE(S)T.",
       "calculation_base": "equity",
-      "calculation_note": "The daily loss limit is always 5% of INITIAL capital. However, if your balance at midnight is higher than initial, the floor is calculated from that higher balance. Example: $100K account, balance at midnight = $105K, floor = $105K - $5K = $100K (not $95K).",
       "reset_time": "00:00 CET",
       "breach_action": "account_violation"
     },
@@ -28,28 +62,28 @@
       "type": "max_drawdown",
       "value": 10,
       "unit": "percent_of_initial_balance",
-      "description": "Account equity must not drop below 90% of INITIAL account balance at any time. This is static (non-trailing) — the floor never moves. Example: $100K account, equity floor = $90K forever.",
+      "description": "2-Step: Static 10%, equity floor never moves. 1-Step: EOD Trailing 10%, floor trails highest end-of-day balance.",
       "trailing": false,
       "calculation_base": "initial_balance",
       "breach_action": "account_violation"
     },
     {
       "type": "min_trading_days",
-      "value": 4,
+      "value": 2,
       "unit": "calendar_days",
-      "description": "Must trade on at least 4 calendar days during each phase."
+      "description": "Must trade on at least 2 calendar days (2-Step). Verified from FTMO Free Trial page."
     },
     {
       "type": "time_limit",
-      "value": null,
+      "value": 14,
       "unit": "days",
-      "description": "No time limit. Traders can take as long as needed to reach profit target."
+      "description": "14-day trading period for Free Trial. Regular challenges may have different/no time limits."
     },
     {
       "type": "news_restriction",
       "value": true,
       "unit": "boolean",
-      "description": "On standard accounts, cannot open or close trades within 2 minutes before and after high-impact news events (as defined by FTMO's economic calendar). Applies to standard accounts only, not swing accounts.",
+      "description": "Standard accounts: no trading 2 min before/after high-impact news. Swing accounts: news trading allowed.",
       "applies_to": "standard_accounts_only",
       "window_minutes_before": 2,
       "window_minutes_after": 2
@@ -57,9 +91,9 @@
   ],
   "profit_split": { "base": 80, "max": 90, "unit": "percent" },
   "sources": [
+    "FTMO Free Trial page (verified by screenshot 2026-04-16)",
     "https://ftmo.com/en/trading-objectives/",
     "https://academy.ftmo.com/lesson/maximum-daily-loss/",
-    "https://academy.ftmo.com/lesson/maximum-loss/",
-    "https://www.edgeflo.com/blog/ftmo-rules"
+    "https://academy.ftmo.com/lesson/maximum-loss/"
   ]
 }
