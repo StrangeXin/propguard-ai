@@ -279,6 +279,18 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
               )}
             </div>
 
+            {/* Prompt in confirmation dialog */}
+            {pendingResult.prompt && (
+              <details className="group">
+                <summary className="text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400 transition-colors">
+                  {locale === "zh" ? "查看 AI 提示词" : "View AI Prompt"}
+                </summary>
+                <pre className="mt-2 bg-zinc-950 rounded-lg p-3 text-[10px] text-zinc-500 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                  {pendingResult.prompt}
+                </pre>
+              </details>
+            )}
+
             <div className="flex gap-3">
               <button onClick={() => setShowConfirm(false)}
                 className="flex-1 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition-colors">
@@ -296,9 +308,12 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
       {/* Last Result (no confirmation needed) */}
       {pendingResult && !showConfirm && (
         <Card className="bg-zinc-900 border-0">
-          <CardContent className="pt-3 space-y-2">
+          <CardContent className="pt-3 space-y-3">
             {pendingResult.analysis && (
-              <p className="text-xs text-zinc-300">{pendingResult.analysis}</p>
+              <div>
+                <span className="text-[10px] text-zinc-500 block mb-1">{t.analysis}</span>
+                <p className="text-xs text-zinc-300">{pendingResult.analysis}</p>
+              </div>
             )}
             {pendingResult.error && (
               <p className="text-xs text-red-400">{pendingResult.error}</p>
@@ -318,6 +333,18 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
             ))}
             {pendingResult.next_review && (
               <p className="text-[10px] text-zinc-600">Next: {pendingResult.next_review}</p>
+            )}
+
+            {/* Prompt toggle */}
+            {pendingResult.prompt && (
+              <details className="group">
+                <summary className="text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400 transition-colors">
+                  {locale === "zh" ? "查看 AI 提示词" : "View AI Prompt"}
+                </summary>
+                <pre className="mt-2 bg-zinc-950 rounded-lg p-3 text-[10px] text-zinc-500 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                  {pendingResult.prompt}
+                </pre>
+              </details>
             )}
           </CardContent>
         </Card>

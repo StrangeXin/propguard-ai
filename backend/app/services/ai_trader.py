@@ -264,6 +264,7 @@ Return ONLY valid JSON with your analysis and actions."""
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "prompt": user_prompt,
         "analysis": ai_result.get("analysis", ""),
         "actions_planned": len(ai_result.get("actions", [])),
         "actions_executed": len(executed),
