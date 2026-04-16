@@ -268,6 +268,18 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
           <div className="bg-zinc-900 rounded-xl max-w-lg w-full p-6 space-y-4">
             <h3 className="text-lg font-bold text-white">{t.proposed}</h3>
 
+            {/* Full AI prompt context */}
+            {pendingResult.prompt && (
+              <details open className="group">
+                <summary className="text-[10px] text-zinc-500 cursor-pointer hover:text-zinc-300 transition-colors mb-1">
+                  {locale === "zh" ? "AI 完整上下文" : "Full AI Context"}
+                </summary>
+                <pre className="bg-zinc-950 rounded-lg p-3 text-[10px] text-zinc-400 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed border border-zinc-800">
+                  {pendingResult.prompt}
+                </pre>
+              </details>
+            )}
+
             {pendingResult.analysis && (
               <div className="bg-zinc-800 rounded-lg p-3">
                 <span className="text-[10px] text-zinc-500 block mb-1">{t.analysis}</span>
