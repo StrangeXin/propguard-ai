@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [firmName, setFirmName] = useState("ftmo");
   const [accountSize, setAccountSize] = useState(100000);
   const [accountId, setAccountId] = useState("demo-001");
+  const [selectedSymbol, setSelectedSymbol] = useState("BTCUSD");
 
   const firm = FIRMS.find((f) => f.name === firmName) || FIRMS[0];
 
@@ -135,9 +136,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <KlineChart />
+          <KlineChart symbol={selectedSymbol} onSymbolChange={setSelectedSymbol} />
 
-          <TradingPanel />
+          <div id="trading-panel">
+            <TradingPanel symbol={selectedSymbol} onSymbolChange={setSelectedSymbol} />
+          </div>
 
           <Separator className="bg-zinc-800" />
 
@@ -151,7 +154,11 @@ export default function Dashboard() {
 
           <Separator className="bg-zinc-800" />
 
-          <SignalPanel />
+          <SignalPanel onTrade={(sym, side) => {
+            setSelectedSymbol(sym);
+            // Scroll to trading panel
+            document.getElementById("trading-panel")?.scrollIntoView({ behavior: "smooth" });
+          }} />
 
           <Separator className="bg-zinc-800" />
 

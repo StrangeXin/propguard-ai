@@ -54,7 +54,13 @@ interface SymbolPrice {
   spread: number;
 }
 
-const SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD", "ETHUSD"];
+const SYMBOLS = [
+  "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "USDCHF",
+  "EURJPY", "GBPJPY", "EURGBP", "AUDCAD",
+  "XAUUSD", "XAGUSD",
+  "BTCUSD", "ETHUSD", "SOLUSD",
+  "US30", "NAS100", "SPX500",
+];
 
 const texts: Record<string, Record<string, string>> = {
   en: {
@@ -129,7 +135,7 @@ const texts: Record<string, Record<string, string>> = {
   },
 };
 
-export function TradingPanel() {
+export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
   const { locale } = useI18n();
   const { token } = useAuth();
   const t = texts[locale] || texts.en;
@@ -143,7 +149,18 @@ export function TradingPanel() {
   const [historyStats, setHistoryStats] = useState<{ total_trades: number; win_rate: number; total_pnl: number }>({ total_trades: 0, win_rate: 0, total_pnl: 0 });
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
 
-  const [symbol, setSymbol] = useState("EURUSD");
+  const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
+
+  useEffect(() => {
+    if (externalSymbol && externalSymbol !== symbol) {
+      setSymbolLocal(externalSymbol);
+    }
+  }, [externalSymbol]);
+
+  const setSymbol = (s: string) => {
+    setSymbolLocal(s);
+    onSymbolChange?.(s);
+  };
   const [size, setSize] = useState("0.01");
   const [sl, setSl] = useState("");
   const [tp, setTp] = useState("");

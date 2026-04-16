@@ -44,8 +44,8 @@ const riskBadge = (risk: string) => {
   return map[risk] || "bg-zinc-800 text-zinc-400";
 };
 
-export function SignalPanel() {
-  const { t } = useI18n();
+export function SignalPanel({ onTrade }: { onTrade?: (symbol: string, side: string) => void } = {}) {
+  const { t, locale } = useI18n();
   const [input, setInput] = useState("");
   const [signals, setSignals] = useState<ScoredSignal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -173,6 +173,15 @@ export function SignalPanel() {
 
                 {s.score && (
                   <p className="text-xs text-zinc-500">{s.score.rationale}</p>
+                )}
+
+                {onTrade && s.score && s.score.score >= 40 && (
+                  <button
+                    onClick={() => onTrade(s.signal.symbol, s.signal.direction === "long" ? "buy" : "sell")}
+                    className="mt-2 w-full py-1.5 bg-blue-800 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                  >
+                    {locale === "zh" ? `一键交易 ${s.signal.symbol}` : `Trade ${s.signal.symbol}`}
+                  </button>
                 )}
               </CardContent>
             </Card>

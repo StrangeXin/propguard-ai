@@ -33,11 +33,23 @@ const INDICATORS = [
   { value: "KDJ", label: "KDJ", main: false },
 ];
 
-export function KlineChart() {
+export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
   const { t } = useI18n();
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<import("klinecharts").Chart | null>(null);
-  const [symbol, setSymbol] = useState("BTCUSD");
+  const [symbol, setSymbolLocal] = useState(externalSymbol || "BTCUSD");
+
+  // Sync with external symbol
+  useEffect(() => {
+    if (externalSymbol && externalSymbol !== symbol) {
+      setSymbolLocal(externalSymbol);
+    }
+  }, [externalSymbol]);
+
+  const setSymbol = (s: string) => {
+    setSymbolLocal(s);
+    onSymbolChange?.(s);
+  };
   const [periodKey, setPeriodKey] = useState("1h");
   const [activeIndicators, setActiveIndicators] = useState<string[]>(["VOL"]);
   const [loading, setLoading] = useState(false);
