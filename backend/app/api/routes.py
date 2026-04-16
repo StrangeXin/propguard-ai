@@ -16,6 +16,10 @@ from app.services.live_trading import (
     mt5_close_position_partially, mt5_get_symbol_spec,
     mt5_get_symbol_price, mt5_get_trade_history, mt5_get_account_info,
 )
+from app.services.ai_trader import (
+    ai_analyze_and_trade, start_trading_session, stop_trading_session,
+    get_session_status, list_sessions,
+)
 
 from app.rules.engine import evaluate_compliance, list_available_firms, load_firm_rules
 from app.services.trading_stats import calculate_challenge_progress
@@ -691,6 +695,121 @@ async def trading_account_info(authorization: str = Header(default="")):
     info = await mt5_get_account_info()
     import json as _json
     return _json.loads(_json.dumps(info, default=str)) if info else {"error": "Not connected"}
+
+
+## ── AI Trading ──────────────────────────────────────────────────
+
+
+class AITradeRequest(BaseModel):
+    strategy: dict
+    firm_name: str = "ftmo"
+    account_size: int = 100000
+    evaluation_type: str | None = None
+    dry_run: bool = True
+
+
+class AISessionRequest(BaseModel):
+    strategy: dict
+    interval: str = "1h"  # 1m, 5m, 15m, 1h, 4h, 1d
+    firm_name: str = "ftmo"
+    account_size: int = 100000
+    evaluation_type: str | None = None
+    dry_run: bool = True
+
+
+INTERVAL_MAP = {
+    "1m": 60, "5m": 300, "15m": 900,
+    "1h": 3600, "4h": 14400, "1d": 86400,
+}
+
+
+@router.post("/api/ai-trade/analyze")
+async def ai_trade_analyze(body: AITradeRequest, authorization: str = Header(default="")):
+    """Run one AI trading cycle: analyze market + return/execute actions."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await ai_analyze_and_trade(
+        strategy=body.strategy,
+        firm_name=body.firm_name,
+        account_size=body.account_size,
+        evaluation_type=body.evaluation_type,
+        dry_run=body.dry_run,
+    )
+    import json as _json
+    return _json.loads(_json.dumps(result, default=str))
+
+
+@router.post("/api/ai-trade/start")
+async def ai_trade_start(body: AISessionRequest, authorization: str = Header(default="")):
+    """Start an automated AI trading session."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    interval_seconds = INTERVAL_MAP.get(body.interval, 3600)
+    session_id = f"{user['id'][:8]}-{body.strategy.get('name', 'unnamed')}"
+
+    # Check if already running
+    existing = get_session_status(session_id)
+    if existing and existing.get("status") == "running":
+        return {"error": "Session already running", "session_id": session_id}
+
+    # Start in background
+    import asyncio
+    asyncio.create_task(start_trading_session(
+        session_id=session_id,
+        strategy=body.strategy,
+        interval_seconds=interval_seconds,
+        firm_name=body.firm_name,
+        account_size=body.account_size,
+        evaluation_type=body.evaluation_type,
+        dry_run=body.dry_run,
+    ))
+
+    return {"started": True, "session_id": session_id, "interval": body.interval, "dry_run": body.dry_run}
+
+
+@router.post("/api/ai-trade/stop/{session_id}")
+async def ai_trade_stop(session_id: str, authorization: str = Header(default="")):
+    """Stop a running AI trading session."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    stopped = stop_trading_session(session_id)
+    return {"stopped": stopped, "session_id": session_id}
+
+
+@router.get("/api/ai-trade/sessions")
+async def ai_trade_sessions(authorization: str = Header(default="")):
+    """List all AI trading sessions."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return {"sessions": list_sessions()}
+
+
+@router.get("/api/ai-trade/session/{session_id}")
+async def ai_trade_session_detail(session_id: str, authorization: str = Header(default="")):
+    """Get detailed status of an AI trading session."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    status = get_session_status(session_id)
+    if not status:
+        return {"error": "Session not found"}
+
+    import json as _json
+    return _json.loads(_json.dumps(status, default=str))
 
 
 ## ── Payments ────────────────────────────────────────────────────

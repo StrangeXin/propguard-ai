@@ -15,6 +15,7 @@ import { KlineChart } from "@/components/dashboard/KlineChart";
 import { AlertHistory } from "@/components/dashboard/AlertHistory";
 import { AccountManager } from "@/components/dashboard/AccountManager";
 import { ChallengeProgress } from "@/components/dashboard/ChallengeProgress";
+import { AITrader } from "@/components/dashboard/AITrader";
 import { TradingPanel } from "@/components/dashboard/TradingPanel";
 import { LocaleSwitcher } from "@/components/dashboard/LocaleSwitcher";
 import {
@@ -174,6 +175,10 @@ export default function Dashboard() {
               <AlertHistory accountId={accountId} />
             </div>
           </div>
+
+          <Separator className="bg-zinc-800" />
+
+          <AITrader firmName={firmName} accountSize={accountSize} evaluationType={evaluationType || undefined} />
 
           <Separator className="bg-zinc-800" />
 
