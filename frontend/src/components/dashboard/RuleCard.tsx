@@ -3,97 +3,151 @@
 import type { RuleCheckResult, AlertLevel } from "@/lib/types";
 import { useI18n } from "@/i18n/context";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 
-const alertColors: Record<AlertLevel, { bg: string; text: string; dot: string; progress: string }> = {
-  safe: { bg: "bg-green-950/20", text: "text-green-400", dot: "bg-green-500", progress: "[&>div]:bg-green-500" },
-  warning: { bg: "bg-yellow-950/20", text: "text-yellow-400", dot: "bg-yellow-500", progress: "[&>div]:bg-yellow-500" },
-  critical: { bg: "bg-orange-950/20", text: "text-orange-400", dot: "bg-orange-500", progress: "[&>div]:bg-orange-500" },
-  danger: { bg: "bg-red-950/20", text: "text-red-400", dot: "bg-red-500", progress: "[&>div]:bg-red-500" },
-  breached: { bg: "bg-red-950/30", text: "text-red-300", dot: "bg-red-600 animate-pulse", progress: "[&>div]:bg-red-600" },
+const alertStyles: Record<AlertLevel, { bg: string; text: string; badge: string; progress: string }> = {
+  safe: { bg: "bg-green-950/20 border-green-900/30", text: "text-green-400", badge: "bg-green-900 text-green-300", progress: "[&>div]:bg-green-500" },
+  warning: { bg: "bg-yellow-950/20 border-yellow-900/30", text: "text-yellow-400", badge: "bg-yellow-900 text-yellow-300", progress: "[&>div]:bg-yellow-500" },
+  critical: { bg: "bg-orange-950/20 border-orange-900/30", text: "text-orange-400", badge: "bg-orange-900 text-orange-300", progress: "[&>div]:bg-orange-500" },
+  danger: { bg: "bg-red-950/20 border-red-900/30", text: "text-red-400", badge: "bg-red-900 text-red-300", progress: "[&>div]:bg-red-500" },
+  breached: { bg: "bg-red-950/30 border-red-800/50", text: "text-red-300", badge: "bg-red-800 text-red-200", progress: "[&>div]:bg-red-600" },
 };
 
 const DOLLAR_RULES = new Set(["daily_loss", "max_drawdown", "profit_target"]);
-const HIDE_PROGRESS = new Set(["news_restriction", "time_limit", "best_day_rule"]);
+const INFO_RULES = new Set(["news_restriction", "best_day_rule"]);
 
 export function RuleCard({ check }: { check: RuleCheckResult }) {
-  const { t, locale } = useI18n();
-  const style = alertColors[check.alert_level];
+  const { locale } = useI18n();
+  const style = alertStyles[check.alert_level];
 
-  const ruleLabels: Record<string, string> = {
-    daily_loss: t("compliance.dailyLoss"),
-    max_drawdown: t("compliance.maxDrawdown"),
-    position_size: locale === "zh" ? "仓位大小" : "Position Size",
-    min_trading_days: locale === "zh" ? "交易天数" : "Trading Days",
-    news_restriction: locale === "zh" ? "新闻限制" : "News",
-    trading_hours: locale === "zh" ? "交易时段" : "Hours",
-    leverage: locale === "zh" ? "杠杆" : "Leverage",
-    time_limit: locale === "zh" ? "时间限制" : "Time Limit",
+  const labels: Record<string, string> = {
+    daily_loss: locale === "zh" ? "每日亏损限额" : "Daily Loss Limit",
+    max_drawdown: locale === "zh" ? "最大回撤" : "Max Drawdown",
+    position_size: locale === "zh" ? "仓位限制" : "Position Size",
+    min_trading_days: locale === "zh" ? "最低交易天数" : "Min Trading Days",
+    news_restriction: locale === "zh" ? "新闻交易限制" : "News Restriction",
+    trading_hours: locale === "zh" ? "交易时段" : "Trading Hours",
+    leverage: locale === "zh" ? "杠杆限制" : "Leverage Limit",
+    time_limit: locale === "zh" ? "交易期限" : "Trading Period",
     profit_target: locale === "zh" ? "盈利目标" : "Profit Target",
     best_day_rule: locale === "zh" ? "最佳日规则" : "Best Day Rule",
   };
 
   const isDollar = DOLLAR_RULES.has(check.rule_type);
+  const isInfo = INFO_RULES.has(check.rule_type);
   const isProfit = check.rule_type === "profit_target";
-  const showProgress = !HIDE_PROGRESS.has(check.rule_type) && check.limit_value > 0;
-  // For profit_target: remaining_pct = progress towards target (higher = better)
-  // For loss rules: remaining_pct = remaining before breach (higher = safer)
-  const usedPct = showProgress
-    ? isProfit
-      ? Math.min(check.remaining_pct, 100)  // profit: show progress
-      : Math.min((1 - check.remaining_pct / 100) * 100, 100)  // loss: show used
-    : 0;
 
-  const formatValue = (v: number) => {
-    if (isDollar) return `$${v.toLocaleString("en", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    if (check.rule_type === "min_trading_days") return `${v.toFixed(0)}d`;
-    if (check.rule_type === "time_limit") return `${v.toFixed(0)}d`;
-    if (check.rule_type === "position_size") return `${v.toFixed(1)}`;
-    return `${v}`;
-  };
+  // Calculate progress bar percentage
+  let progressPct = 0;
+  if (isDollar && check.limit_value > 0) {
+    if (isProfit) {
+      progressPct = Math.min(check.remaining_pct, 100); // progress towards target
+    } else {
+      progressPct = Math.min((check.current_value / check.limit_value) * 100, 100); // used
+    }
+  } else if (check.rule_type === "min_trading_days" && check.limit_value > 0) {
+    progressPct = Math.min((check.current_value / check.limit_value) * 100, 100);
+  }
 
-  // Short status text
-  const statusText = () => {
-    if (check.rule_type === "news_restriction") return check.alert_level === "safe" ? "OK" : "Check";
-    if (check.rule_type === "trading_hours") return check.alert_level === "safe" ? "OK" : "Weekend";
-    if (check.rule_type === "leverage") return check.alert_level === "safe" ? "OK" : "Over";
-    if (check.rule_type === "best_day_rule") return `<${check.limit_value}%`;
-    if (check.rule_type === "profit_target") {
-      return `$${check.current_value.toLocaleString("en", { maximumFractionDigits: 0 })}/$${check.limit_value.toLocaleString("en", { maximumFractionDigits: 0 })}`;
-    }
-    if (check.rule_type === "time_limit") {
-      const days = Math.max(check.remaining, 0);
-      return `${days.toFixed(0)}d left`;
-    }
-    if (check.rule_type === "min_trading_days") {
-      return `${check.current_value.toFixed(0)}/${check.limit_value.toFixed(0)}`;
-    }
-    if (isDollar) {
-      return `$${check.remaining.toLocaleString("en", { maximumFractionDigits: 0 })}`;
-    }
-    return `${check.remaining_pct.toFixed(0)}%`;
+  // Format display values
+  const formatVal = (v: number) => {
+    if (isDollar) return `$${v.toLocaleString("en", { maximumFractionDigits: 0 })}`;
+    return v.toFixed(0);
   };
 
   return (
-    <div className={`${style.bg} rounded-lg px-4 py-3 flex items-center gap-3`}>
-      {/* Status dot */}
-      <div className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
-
-      {/* Label */}
-      <div className="flex-1 min-w-0">
-        <span className="text-sm text-zinc-300">{ruleLabels[check.rule_type] || check.rule_type}</span>
+    <div className={`${style.bg} border rounded-lg p-3 space-y-2`}>
+      {/* Header: label + badge */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-zinc-200">
+          {labels[check.rule_type] || check.rule_type}
+        </span>
+        <Badge className={`${style.badge} text-[10px] px-1.5 py-0`}>
+          {check.alert_level.toUpperCase()}
+        </Badge>
       </div>
 
-      {/* Progress bar */}
-      {showProgress && (
-        <div className="w-24 shrink-0">
-          <Progress value={usedPct} className={`h-1.5 bg-zinc-800 ${isProfit ? "[&>div]:bg-blue-500" : style.progress}`} />
+      {/* Info-only rules (news, best day) */}
+      {isInfo && (
+        <p className="text-xs text-zinc-400">{check.message}</p>
+      )}
+
+      {/* Progress rules (daily loss, drawdown, profit target) */}
+      {isDollar && check.limit_value > 0 && (
+        <>
+          <Progress
+            value={progressPct}
+            className={`h-1.5 bg-zinc-800 ${isProfit ? "[&>div]:bg-blue-500" : style.progress}`}
+          />
+          <div className="flex justify-between text-xs">
+            <span className={`font-mono ${style.text}`}>
+              {isProfit ? formatVal(check.current_value) : formatVal(check.current_value)}
+            </span>
+            <span className="text-zinc-500 font-mono">
+              {isProfit
+                ? `${locale === "zh" ? "目标" : "target"} ${formatVal(check.limit_value)}`
+                : `${locale === "zh" ? "剩余" : "remaining"} ${formatVal(check.remaining)}`
+              }
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* Day-count rules (min trading days, time limit) */}
+      {check.rule_type === "min_trading_days" && (
+        <>
+          <Progress
+            value={progressPct}
+            className="h-1.5 bg-zinc-800 [&>div]:bg-blue-500"
+          />
+          <div className="flex justify-between text-xs">
+            <span className="font-mono text-zinc-300">
+              {check.current_value.toFixed(0)} {locale === "zh" ? "天" : "days"}
+            </span>
+            <span className="text-zinc-500 font-mono">
+              {locale === "zh" ? "需要" : "need"} {check.limit_value.toFixed(0)}
+            </span>
+          </div>
+        </>
+      )}
+
+      {check.rule_type === "time_limit" && check.limit_value > 0 && (
+        <div className="flex justify-between text-xs">
+          <span className="font-mono text-zinc-300">
+            {locale === "zh" ? "第" : "Day"} {Math.max(check.current_value, 0).toFixed(0)}
+          </span>
+          <span className="text-zinc-500 font-mono">
+            {check.remaining.toFixed(0)} {locale === "zh" ? "天剩余" : "days left"}
+          </span>
         </div>
       )}
 
-      {/* Value */}
-      <span className={`text-sm font-mono font-bold shrink-0 ${style.text}`}>
-        {statusText()}
-      </span>
+      {check.rule_type === "time_limit" && check.limit_value === 0 && (
+        <p className="text-xs text-zinc-500">{check.message}</p>
+      )}
+
+      {/* Trading hours / leverage */}
+      {(check.rule_type === "trading_hours" || check.rule_type === "leverage") && (
+        <p className="text-xs text-zinc-400">{check.message}</p>
+      )}
+
+      {/* Position size */}
+      {check.rule_type === "position_size" && (
+        <>
+          <Progress
+            value={progressPct}
+            className={`h-1.5 bg-zinc-800 ${style.progress}`}
+          />
+          <div className="flex justify-between text-xs">
+            <span className={`font-mono ${style.text}`}>
+              {check.current_value.toFixed(1)} {locale === "zh" ? "合约" : "contracts"}
+            </span>
+            <span className="text-zinc-500 font-mono">
+              {locale === "zh" ? "最大" : "max"} {check.limit_value.toFixed(0)}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
