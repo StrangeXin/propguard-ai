@@ -380,6 +380,27 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
               <p className="text-[10px] text-zinc-600">Next: {pendingResult.next_review}</p>
             )}
 
+            {(pendingResult.prompt || pendingResult.system_prompt) && (
+              <details className="group">
+                <summary className="text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400 transition-colors">
+                  {locale === "zh" ? "查看 AI 完整上下文" : "View Full AI Context"}
+                </summary>
+                <div className="mt-2 bg-zinc-950 rounded-lg p-3 max-h-64 overflow-y-auto border border-zinc-800 space-y-3">
+                  {pendingResult.system_prompt && (
+                    <div>
+                      <span className="text-[10px] text-blue-400 font-bold block mb-1">System Prompt:</span>
+                      <pre className="text-[10px] text-zinc-500 whitespace-pre-wrap font-mono leading-relaxed">{pendingResult.system_prompt}</pre>
+                    </div>
+                  )}
+                  {pendingResult.prompt && (
+                    <div>
+                      <span className="text-[10px] text-green-400 font-bold block mb-1">User Prompt:</span>
+                      <pre className="text-[10px] text-zinc-400 whitespace-pre-wrap font-mono leading-relaxed">{pendingResult.prompt}</pre>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
           </CardContent>
         </Card>
       )}
