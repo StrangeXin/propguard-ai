@@ -27,9 +27,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 const FIRMS = [
-  { name: "ftmo", label: "FTMO", sizes: [10000, 25000, 50000, 100000, 200000] },
-  { name: "topstep", label: "TopStep", sizes: [50000, 100000, 150000] },
-  { name: "breakout", label: "Breakout", sizes: [5000, 10000, 25000, 50000, 100000] },
+  { name: "ftmo", label: "FTMO", sizes: [10000, 25000, 50000, 100000, 200000], defaultSize: 100000 },
+  { name: "topstep", label: "TopStep", sizes: [50000, 100000, 150000], defaultSize: 50000 },
+  { name: "breakout", label: "Breakout", sizes: [5000, 10000, 25000, 50000, 100000], defaultSize: 50000 },
 ];
 
 export default function Dashboard() {
@@ -74,17 +74,7 @@ export default function Dashboard() {
             setFirmName(v);
             const found = FIRMS.find(f => f.name === v);
             if (found) {
-              // If current size exists in new firm, keep it; otherwise use the largest common size or middle
-              const newSizes = found.sizes;
-              if (newSizes.includes(accountSize)) {
-                // Keep current size
-              } else {
-                // Pick the closest available size
-                const closest = newSizes.reduce((prev, curr) =>
-                  Math.abs(curr - accountSize) < Math.abs(prev - accountSize) ? curr : prev
-                );
-                setAccountSize(closest);
-              }
+              setAccountSize(found.defaultSize);
             }
           }}>
             <SelectTrigger className="w-40 bg-zinc-900 border-zinc-800 text-white">
