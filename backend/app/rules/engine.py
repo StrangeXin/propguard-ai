@@ -246,12 +246,162 @@ def check_min_trading_days(
     )
 
 
+def check_news_restriction(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Check if currently in a news restriction period."""
+    if not rule.get("value"):
+        return RuleCheckResult(
+            rule_type="news_restriction",
+            rule_description="No news trading restrictions",
+            current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
+            alert_level=AlertLevel.SAFE,
+            message=f"{firm_rules['firm_name']} has no news trading restrictions.",
+        )
+
+    # Check if any position was opened recently (potential news trade)
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    recent_positions = [
+        p for p in account.open_positions
+        if (now - p.opened_at).total_seconds() < 300  # opened in last 5 min
+    ]
+
+    if recent_positions:
+        return RuleCheckResult(
+            rule_type="news_restriction",
+            rule_description=rule.get("description", "News trading restriction"),
+            current_value=float(len(recent_positions)),
+            limit_value=0, remaining=0, remaining_pct=50,
+            alert_level=AlertLevel.WARNING,
+            message=f"Warning: {len(recent_positions)} position(s) opened recently. Check economic calendar for high-impact news events.",
+        )
+
+    return RuleCheckResult(
+        rule_type="news_restriction",
+        rule_description=rule.get("description", "News trading restriction active"),
+        current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
+        alert_level=AlertLevel.SAFE,
+        message="No recent trades near news events. Check calendar before opening positions.",
+    )
+
+
+def check_trading_hours(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Check if current time is within allowed trading hours."""
+    from datetime import datetime
+    now = datetime.now()
+    hour = now.hour
+    weekday = now.weekday()  # 0=Mon, 6=Sun
+
+    # CME futures: Sunday 5pm - Friday 4pm CT (roughly)
+    # Simplified: no trading on weekends
+    is_weekend = weekday >= 5
+
+    if is_weekend and account.open_positions:
+        return RuleCheckResult(
+            rule_type="trading_hours",
+            rule_description=rule.get("description", "Trading hours restriction"),
+            current_value=float(len(account.open_positions)),
+            limit_value=0, remaining=0, remaining_pct=0,
+            alert_level=AlertLevel.WARNING,
+            message=f"Weekend: {len(account.open_positions)} position(s) open. Check if overnight/weekend holding is allowed.",
+        )
+
+    return RuleCheckResult(
+        rule_type="trading_hours",
+        rule_description=rule.get("description", "Trading hours"),
+        current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
+        alert_level=AlertLevel.SAFE,
+        message="Within trading hours." if not is_weekend else "Weekend — market closed.",
+    )
+
+
+def check_leverage(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Check leverage limits per asset."""
+    value_by_asset = rule.get("value_by_asset")
+    if not value_by_asset:
+        return None
+
+    # Check each position against leverage limits
+    violations = []
+    for pos in account.open_positions:
+        symbol = pos.symbol.upper()
+        for asset, max_lev in value_by_asset.items():
+            if asset.upper() in symbol:
+                # Simplified leverage check
+                notional = pos.size * pos.current_price
+                account_equity = account.current_equity
+                effective_leverage = notional / account_equity if account_equity > 0 else 0
+                if effective_leverage > max_lev:
+                    violations.append(f"{symbol}: {effective_leverage:.1f}x (max {max_lev}x)")
+
+    if violations:
+        return RuleCheckResult(
+            rule_type="leverage",
+            rule_description=rule.get("description", "Leverage limits"),
+            current_value=float(len(violations)),
+            limit_value=0, remaining=0, remaining_pct=0,
+            alert_level=AlertLevel.DANGER,
+            message=f"Leverage exceeded: {', '.join(violations)}",
+        )
+
+    return RuleCheckResult(
+        rule_type="leverage",
+        rule_description=rule.get("description", "Leverage limits"),
+        current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
+        alert_level=AlertLevel.SAFE,
+        message="All positions within leverage limits.",
+    )
+
+
+def check_time_limit(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Check challenge time limit."""
+    if rule.get("value") is None:
+        return RuleCheckResult(
+            rule_type="time_limit",
+            rule_description="No time limit",
+            current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
+            alert_level=AlertLevel.SAFE,
+            message=f"{firm_rules['firm_name']}: No time limit. Trade at your own pace.",
+        )
+
+    limit_days = float(rule["value"])
+    if account.challenge_start_date:
+        from datetime import datetime
+        elapsed = (datetime.now() - account.challenge_start_date).days
+        remaining = max(limit_days - elapsed, 0)
+        remaining_pct = (remaining / limit_days * 100) if limit_days > 0 else 100
+        alert_level = _get_alert_level(remaining_pct)
+        return RuleCheckResult(
+            rule_type="time_limit",
+            rule_description=rule.get("description", "Challenge time limit"),
+            current_value=float(elapsed),
+            limit_value=limit_days,
+            remaining=remaining,
+            remaining_pct=remaining_pct,
+            alert_level=alert_level,
+            message=f"Day {elapsed} of {int(limit_days)}. {int(remaining)} days remaining.",
+        )
+
+    return None
+
+
 # Map rule types to checker functions
 RULE_CHECKERS = {
     "daily_loss": check_daily_loss,
     "max_drawdown": check_max_drawdown,
     "position_size": check_position_size,
     "min_trading_days": check_min_trading_days,
+    "news_restriction": check_news_restriction,
+    "trading_hours": check_trading_hours,
+    "leverage": check_leverage,
+    "time_limit": check_time_limit,
 }
 
 

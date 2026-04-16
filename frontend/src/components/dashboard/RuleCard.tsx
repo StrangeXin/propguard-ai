@@ -15,7 +15,7 @@ const alertStyles: Record<AlertLevel, { bg: string; text: string; badge: string;
 };
 
 export function RuleCard({ check }: { check: RuleCheckResult }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const style = alertStyles[check.alert_level];
   const usedPct = Math.min(100 - check.remaining_pct, 100);
 
@@ -24,6 +24,10 @@ export function RuleCard({ check }: { check: RuleCheckResult }) {
     max_drawdown: t("compliance.maxDrawdown"),
     position_size: t("compliance.positionSize"),
     min_trading_days: t("compliance.tradingDays"),
+    news_restriction: locale === "zh" ? "新闻限制" : "News Restriction",
+    trading_hours: locale === "zh" ? "交易时段" : "Trading Hours",
+    leverage: locale === "zh" ? "杠杆限制" : "Leverage",
+    time_limit: locale === "zh" ? "时间限制" : "Time Limit",
   };
 
   return (
