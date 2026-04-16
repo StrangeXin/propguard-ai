@@ -10,11 +10,16 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-async def get_metaapi_connection():
+async def get_metaapi_connection(firm_name: str = "ftmo"):
     """Get the active MetaApi RPC connection from broker."""
     from app.api.routes import broker
-    if broker._connection and broker._metaapi_ready:
-        return broker._connection
+    conn = broker._get_connection(firm_name)
+    if conn and conn.ready and conn.connection:
+        return conn.connection
+    # Fallback to any available connection
+    for c in broker._connections.values():
+        if c.ready and c.connection:
+            return c.connection
     return None
 
 

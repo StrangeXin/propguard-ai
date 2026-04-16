@@ -14,7 +14,8 @@ class Settings(BaseSettings):
 
     # MetaApi (MT4/MT5 cloud connection)
     metaapi_token: str = ""
-    metaapi_account_id: str = ""
+    metaapi_account_id: str = ""  # default account
+    ftmo_metaapi_account_id: str = ""  # FTMO specific account
     mt5_server: str = ""
     mt5_login: str = ""
     mt5_password: str = ""
