@@ -10,6 +10,7 @@ interface UseComplianceOptions {
   accountId: string;
   firmName: string;
   accountSize: number;
+  evaluationType?: string;
   enabled?: boolean;
 }
 
@@ -26,8 +27,10 @@ export function useCompliance({
   accountId,
   firmName,
   accountSize,
+  evaluationType,
   enabled = true,
 }: UseComplianceOptions): UseComplianceReturn {
+  const evalParam = evaluationType ? `&evaluation_type=${evaluationType}` : "";
   const [account, setAccount] = useState<AccountState | null>(null);
   const [compliance, setCompliance] = useState<ComplianceReport | null>(null);
   const [connected, setConnected] = useState(false);
@@ -40,7 +43,7 @@ export function useCompliance({
     if (!enabled || !accountId) return;
     try {
       const res = await fetch(
-        `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}`
+        `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}${evalParam}`
       );
       const data = await res.json();
       if (data.status === "connecting") {
@@ -56,7 +59,7 @@ export function useCompliance({
     } catch {
       // silent
     }
-  }, [accountId, firmName, accountSize, enabled]);
+  }, [accountId, firmName, accountSize, evaluationType, enabled]);
 
   useEffect(() => {
     // Clear old data immediately on param change
@@ -79,7 +82,7 @@ export function useCompliance({
 
     const tryWs = () => {
       const wsUrl = API_BASE.replace("http", "ws");
-      const url = `${wsUrl}/ws/compliance/${accountId}?firm_name=${firmName}&account_size=${accountSize}`;
+      const url = `${wsUrl}/ws/compliance/${accountId}?firm_name=${firmName}&account_size=${accountSize}${evalParam}`;
 
       try {
         ws = new WebSocket(url);
@@ -139,7 +142,7 @@ export function useCompliance({
         ws = null;
       }
     };
-  }, [accountId, firmName, accountSize, enabled, fetchRest]);
+  }, [accountId, firmName, accountSize, evaluationType, enabled, fetchRest]);
 
   return { account, compliance, connected, error, reconnecting, brokerConnecting };
 }
@@ -153,10 +156,12 @@ export async function fetchFirms() {
 export async function fetchCompliance(
   accountId: string,
   firmName: string,
-  accountSize: number
+  accountSize: number,
+  evaluationType?: string
 ) {
+  const ep = evaluationType ? `&evaluation_type=${evaluationType}` : "";
   const res = await fetch(
-    `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}`
+    `${API_BASE}/api/accounts/${accountId}/compliance?firm_name=${firmName}&account_size=${accountSize}${ep}`
   );
   if (!res.ok) throw new Error("Failed to fetch compliance");
   return res.json();

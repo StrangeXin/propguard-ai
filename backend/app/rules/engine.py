@@ -525,15 +525,22 @@ RULE_CHECKERS = {
 }
 
 
-def evaluate_compliance(account: AccountState) -> ComplianceReport:
+def evaluate_compliance(account: AccountState, evaluation_type: str | None = None) -> ComplianceReport:
     """
     Run all applicable rule checks for an account and return a compliance report.
-    This is the main entry point for the rule engine.
+    evaluation_type: "1-step" or "2-step" for firms with multiple evaluation types.
     """
     firm_rules = load_firm_rules(account.firm_name)
     checks: list[RuleCheckResult] = []
 
-    for rule in firm_rules["rules"]:
+    # Get rules — support both "rules" (flat) and "rules_by_evaluation" (per type)
+    if "rules_by_evaluation" in firm_rules:
+        eval_type = evaluation_type or firm_rules.get("default_evaluation", "2-step")
+        rules = firm_rules["rules_by_evaluation"].get(eval_type, [])
+    else:
+        rules = firm_rules.get("rules", [])
+
+    for rule in rules:
         checker = RULE_CHECKERS.get(rule["type"])
         if checker:
             result = checker(account, rule, firm_rules)

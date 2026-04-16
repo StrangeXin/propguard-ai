@@ -58,7 +58,7 @@ async def get_firm_rules(firm_name: str):
 
 
 @router.get("/api/accounts/{account_id}/compliance")
-async def get_compliance(account_id: str, firm_name: str, account_size: int):
+async def get_compliance(account_id: str, firm_name: str, account_size: int, evaluation_type: str | None = None):
     """
     Get current compliance status for an account.
     This is the core endpoint — fetches account state from broker API,
@@ -83,12 +83,13 @@ async def get_compliance(account_id: str, firm_name: str, account_size: int):
                 broker_connected=False,
             )
 
-        report = evaluate_compliance(account_state)
+        report = evaluate_compliance(account_state, evaluation_type)
 
         import json as _json
         return _json.loads(_json.dumps({
             "account": account_state.model_dump(),
             "compliance": report.model_dump(),
+            "evaluation_type": evaluation_type or "default",
         }, default=str))
     except Exception as e:
         import traceback
@@ -108,7 +109,7 @@ async def test_alert(account_id: str, firm_name: str, account_size: int, chat_id
 
 
 @router.websocket("/ws/compliance/{account_id}")
-async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name: str = "ftmo", account_size: int = 100000):
+async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name: str = "ftmo", account_size: int = 100000, evaluation_type: str | None = None):
     """
     WebSocket endpoint for real-time compliance monitoring.
     Client connects and receives compliance updates every 2 seconds.
@@ -133,7 +134,7 @@ async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name:
                         "okx_ready": broker.is_okx_ready,
                     }))
                 else:
-                    report = evaluate_compliance(account_state)
+                    report = evaluate_compliance(account_state, evaluation_type)
                     payload = json.dumps({
                         "type": "compliance_update",
                         "account": account_state.model_dump(),

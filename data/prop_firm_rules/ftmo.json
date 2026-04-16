@@ -1,46 +1,13 @@
 {
   "firm_name": "FTMO",
-  "version": 3,
+  "version": 4,
   "effective_date": "2026-04-16",
-  "verified": "Official FTMO Free Trial page screenshot",
-  "website": "https://ftmo.com",
-  "description": "Global prop firm. 2-Step and 1-Step evaluations. MetaTrader 5. Free Trial available.",
+  "verified": "Official FTMO Trading Objectives page - verified 2026-04-16",
+  "website": "https://ftmo.oanda.com/trading-objectives/",
+  "description": "Global prop firm. 1-Step and 2-Step evaluations. MetaTrader 5.",
   "markets": ["forex", "indices", "commodities", "crypto"],
-  "evaluation_types": {
-    "2-step": {
-      "profit_target_phase1_pct": 5,
-      "profit_target_phase2_pct": 5,
-      "max_loss_pct": 10,
-      "max_daily_loss_pct": 5,
-      "min_trading_days": 2,
-      "trading_period_days": 14,
-      "trailing": false
-    },
-    "1-step": {
-      "profit_target_pct": 5,
-      "max_loss_pct": 10,
-      "max_daily_loss_pct": 3,
-      "best_day_rule_pct": 50,
-      "min_trading_days": null,
-      "trading_period_days": 14,
-      "trailing": true,
-      "trailing_type": "end_of_day"
-    }
-  },
-  "account_types": {
-    "standard": {
-      "leverage": "1:100",
-      "news_restriction": true,
-      "weekend_holding": false,
-      "description": "Higher leverage, no news trading, no weekend holding"
-    },
-    "swing": {
-      "leverage": "1:30",
-      "news_restriction": false,
-      "weekend_holding": true,
-      "description": "Lower leverage, news trading and weekend holding allowed"
-    }
-  },
+  "evaluation_types": ["1-step", "2-step"],
+  "default_evaluation": "2-step",
   "accounts": [
     { "size": 10000, "currency": "USD" },
     { "size": 25000, "currency": "USD" },
@@ -48,64 +15,90 @@
     { "size": 100000, "currency": "USD" },
     { "size": 200000, "currency": "USD" }
   ],
-  "rules": [
-    {
-      "type": "daily_loss",
-      "value": 5,
-      "unit": "percent_of_initial_balance",
-      "description": "2-Step: Max daily loss 5% of initial balance. 1-Step: 3%. Includes floating P/L, commissions, swaps. Resets at midnight CE(S)T.",
-      "calculation_base": "equity",
-      "reset_time": "00:00 CET",
-      "breach_action": "account_violation"
-    },
-    {
-      "type": "max_drawdown",
-      "value": 10,
-      "unit": "percent_of_initial_balance",
-      "description": "2-Step: Static 10%, equity floor never moves. 1-Step: EOD Trailing 10%, floor trails highest end-of-day balance.",
-      "trailing": false,
-      "calculation_base": "initial_balance",
-      "breach_action": "account_violation"
-    },
-    {
-      "type": "min_trading_days",
-      "value": 2,
-      "unit": "calendar_days",
-      "description": "Must trade on at least 2 calendar days (2-Step). Verified from FTMO Free Trial page."
-    },
-    {
-      "type": "time_limit",
-      "value": 14,
-      "unit": "days",
-      "description": "14-day trading period for Free Trial. Regular challenges may have different/no time limits."
-    },
-    {
-      "type": "profit_target",
-      "value": 5,
-      "unit": "percent_of_initial_balance",
-      "description": "2-Step: 5% profit target per phase. Must reach this to pass."
-    },
-    {
-      "type": "best_day_rule",
-      "value": 50,
-      "unit": "percent_of_total_profit",
-      "description": "1-Step only: Single best day cannot exceed 50% of total profit. Not applied in 2-Step."
-    },
-    {
-      "type": "news_restriction",
-      "value": true,
-      "unit": "boolean",
-      "description": "Standard accounts: no trading 2 min before/after high-impact news. Swing accounts: news trading allowed.",
-      "applies_to": "standard_accounts_only",
-      "window_minutes_before": 2,
-      "window_minutes_after": 2
-    }
-  ],
+  "rules_by_evaluation": {
+    "1-step": [
+      {
+        "type": "profit_target",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% of Initial Simulated Capital. All positions must be closed before review. No target on subsequent Rewards Account."
+      },
+      {
+        "type": "daily_loss",
+        "value": 3,
+        "unit": "percent_of_initial_balance",
+        "description": "3% of Initial Simulated Capital. Recalculated at midnight CE(S)T from previous day's balance. Formula: balance_at_midnight - 3% * initial. Limit can increase AND decrease. Includes floating P/L, commissions, swaps.",
+        "calculation_base": "midnight_balance",
+        "reset_time": "00:00 CET",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% EOD Trailing. Recalculated at midnight CE(S)T as: max(highest_EOD_balance, initial) - 10% * initial. Limit can only INCREASE, never decrease. Includes floating P/L.",
+        "trailing": true,
+        "trailing_type": "end_of_day",
+        "calculation_base": "highest_eod_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "best_day_rule",
+        "value": 50,
+        "unit": "percent_of_positive_days_profit",
+        "description": "Best day (highest profit day from closed trades) cannot exceed 50% of Positive Days' Profit. Not a breach — must continue trading until satisfied. Calculated at midnight CE(S)T."
+      },
+      {
+        "type": "news_restriction",
+        "value": true,
+        "unit": "boolean",
+        "description": "Standard accounts: no trading 2 min before/after high-impact news. Swing accounts: allowed.",
+        "applies_to": "standard_accounts_only"
+      }
+    ],
+    "2-step": [
+      {
+        "type": "profit_target",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% in FTMO Challenge, 5% in Verification. All positions must be closed. Example: $100K account = $10K target."
+      },
+      {
+        "type": "daily_loss",
+        "value": 5,
+        "unit": "percent_of_initial_balance",
+        "description": "5% of initial balance, always. Measured from midnight CE(S)T balance. Sum of closed P/L + floating P/L of open positions. Breach = challenge failed.",
+        "calculation_base": "midnight_balance",
+        "reset_time": "00:00 CET",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% of initial balance, static. Equity cannot drop below 90% of initial at any time. Example: $100K account, floor = $90K forever.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "min_trading_days",
+        "value": 4,
+        "unit": "calendar_days",
+        "description": "4 minimum trading days. At least one position initiated per day. Days don't need to be consecutive. Day boundary = midnight CE(S)T."
+      },
+      {
+        "type": "news_restriction",
+        "value": true,
+        "unit": "boolean",
+        "description": "Standard accounts: no trading 2 min before/after high-impact news. Swing accounts: allowed.",
+        "applies_to": "standard_accounts_only"
+      }
+    ]
+  },
   "profit_split": { "base": 80, "max": 90, "unit": "percent" },
   "sources": [
-    "FTMO Free Trial page (verified by screenshot 2026-04-16)",
-    "https://ftmo.com/en/trading-objectives/",
-    "https://academy.ftmo.com/lesson/maximum-daily-loss/",
-    "https://academy.ftmo.com/lesson/maximum-loss/"
+    "https://ftmo.oanda.com/trading-objectives/ (verified 2026-04-16)",
+    "FTMO Free Trial page screenshot"
   ]
 }

@@ -27,9 +27,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 const FIRMS = [
-  { name: "ftmo", label: "FTMO", sizes: [10000, 25000, 50000, 100000, 200000], defaultSize: 100000 },
-  { name: "topstep", label: "TopStep", sizes: [50000, 100000, 150000], defaultSize: 50000 },
-  { name: "cryptofundtrader", label: "CryptoFundTrader", sizes: [5000, 10000, 25000, 50000, 100000, 200000], defaultSize: 100000 },
+  { name: "ftmo", label: "FTMO", sizes: [10000, 25000, 50000, 100000, 200000], defaultSize: 100000, evalTypes: ["1-step", "2-step"], defaultEval: "1-step" },
+  { name: "topstep", label: "TopStep", sizes: [50000, 100000, 150000], defaultSize: 50000, evalTypes: null, defaultEval: null },
+  { name: "cryptofundtrader", label: "CryptoFundTrader", sizes: [5000, 10000, 25000, 50000, 100000, 200000], defaultSize: 100000, evalTypes: null, defaultEval: null },
 ];
 
 export default function Dashboard() {
@@ -46,6 +46,7 @@ export default function Dashboard() {
   const [firmName, setFirmName] = useState("ftmo");
   const [accountSize, setAccountSize] = useState(100000);
   const [accountId, setAccountId] = useState("demo-001");
+  const [evaluationType, setEvaluationType] = useState("1-step");
   const [selectedSymbol, setSelectedSymbol] = useState("BTCUSD");
 
   const firm = FIRMS.find((f) => f.name === firmName) || FIRMS[0];
@@ -54,6 +55,7 @@ export default function Dashboard() {
     accountId,
     firmName,
     accountSize,
+    evaluationType: evaluationType || undefined,
   });
 
   if (authLoading || !user) {
@@ -75,6 +77,7 @@ export default function Dashboard() {
             const found = FIRMS.find(f => f.name === v);
             if (found) {
               setAccountSize(found.defaultSize);
+              setEvaluationType(found.defaultEval || "");
             }
           }}>
             <SelectTrigger className="w-40 bg-zinc-900 border-zinc-800 text-white">
@@ -97,6 +100,19 @@ export default function Dashboard() {
               ))}
             </SelectContent>
           </Select>
+          {firm.evalTypes && (
+            <div className="flex bg-zinc-800 rounded-lg overflow-hidden">
+              {firm.evalTypes.map((et: string) => (
+                <button
+                  key={et}
+                  onClick={() => setEvaluationType(et)}
+                  className={`px-3 py-1.5 text-xs transition-colors ${evaluationType === et ? "bg-zinc-600 text-white" : "text-zinc-400 hover:text-white"}`}
+                >
+                  {et}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
