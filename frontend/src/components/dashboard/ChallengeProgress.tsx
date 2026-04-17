@@ -70,7 +70,7 @@ export function ChallengeProgress({
 
   useEffect(() => {
     fetch_();
-    const interval = setInterval(fetch_, 5000);
+    const interval = setInterval(fetch_, 30000); // 30s, not 5s
     return () => clearInterval(interval);
   }, [fetch_]);
 

@@ -229,15 +229,14 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   useEffect(() => {
     fetchAccount();
     fetchAccountInfo();
-    const i1 = setInterval(fetchAccount, 5000);
+    const i1 = setInterval(fetchAccount, 15000); // 15s, not 5s
     return () => clearInterval(i1);
   }, [fetchAccount, fetchAccountInfo]);
 
-  // Price updates — separate effect so symbol changes trigger immediately
   useEffect(() => {
-    setSymbolPrice(null); // clear old price immediately on symbol change
+    setSymbolPrice(null);
     fetchPrice();
-    const i2 = setInterval(fetchPrice, 3000);
+    const i2 = setInterval(fetchPrice, 10000); // 10s, not 3s
     return () => clearInterval(i2);
   }, [fetchPrice]);
 

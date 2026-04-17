@@ -48,7 +48,7 @@ export function AlertHistory({ accountId }: { accountId: string }) {
 
   useEffect(() => {
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000); // refresh every 10s
+    const interval = setInterval(fetchAlerts, 30000); // 30s
     return () => clearInterval(interval);
   }, [fetchAlerts]);
 

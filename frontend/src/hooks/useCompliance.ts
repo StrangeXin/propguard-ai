@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { AccountState, ComplianceReport } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-const POLL_INTERVAL = 3000;
+const POLL_INTERVAL = 10000; // 10s, reduced from 3s
 
 interface UseComplianceOptions {
   accountId: string;

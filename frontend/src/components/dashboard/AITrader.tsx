@@ -104,7 +104,7 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
     fetchStrategies();
     fetchSessions();
     fetchHistory();
-    const i = setInterval(fetchSessions, 10000);
+    const i = setInterval(fetchSessions, 30000); // 30s
     return () => clearInterval(i);
   }, [fetchStrategies, fetchSessions, fetchHistory]);
 
