@@ -54,13 +54,7 @@ interface SymbolPrice {
   spread: number;
 }
 
-const SYMBOLS = [
-  "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "USDCHF",
-  "EURJPY", "GBPJPY", "EURGBP", "AUDCAD",
-  "XAUUSD", "XAGUSD",
-  "BTCUSD", "ETHUSD", "SOLUSD",
-  "US30", "NAS100", "SPX500",
-];
+import { SymbolSelect } from "./SymbolSelect";
 
 const texts: Record<string, Record<string, string>> = {
   en: {
@@ -373,9 +367,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
             {/* Symbol + live price */}
             <div className="flex items-center gap-3">
-              <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className="bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none">
-                {SYMBOLS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <SymbolSelect value={symbol} onChange={setSymbol} />
               {symbolPrice && (
                 <div className="flex gap-3 text-xs">
                   <span className="text-green-400">{t.bid}: {symbolPrice.bid}</span>

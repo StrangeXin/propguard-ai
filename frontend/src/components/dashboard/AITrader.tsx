@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n/context";
 import { useAuth } from "@/app/providers";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SymbolSelect } from "./SymbolSelect";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -249,16 +250,12 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
             </div>
             <div>
               <label className="text-[10px] text-zinc-500 block mb-1">{t.symbols}</label>
-              <select value={symbols.split(",")[0]?.trim() || "EURUSD"}
-                onChange={(e) => setSymbols(e.target.value)}
-                className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none">
-                {["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","NZDUSD","USDCHF",
-                  "EURJPY","GBPJPY","EURGBP","AUDCAD",
-                  "XAUUSD","XAGUSD","BTCUSD","ETHUSD","SOLUSD",
-                  "US30","NAS100","SPX500"].map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              <SymbolSelect
+                value={symbols.split(",")[0]?.trim() || "EURUSD"}
+                onChange={(s) => setSymbols(s)}
+                firmName={firmName}
+                className="w-full"
+              />
             </div>
           </div>
 

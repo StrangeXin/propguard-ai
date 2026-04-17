@@ -5,27 +5,7 @@ import { useI18n } from "@/i18n/context";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
-const SYMBOLS = [
-  { value: "EURUSD", label: "EUR/USD" },
-  { value: "GBPUSD", label: "GBP/USD" },
-  { value: "USDJPY", label: "USD/JPY" },
-  { value: "AUDUSD", label: "AUD/USD" },
-  { value: "USDCAD", label: "USD/CAD" },
-  { value: "NZDUSD", label: "NZD/USD" },
-  { value: "USDCHF", label: "USD/CHF" },
-  { value: "EURJPY", label: "EUR/JPY" },
-  { value: "GBPJPY", label: "GBP/JPY" },
-  { value: "EURGBP", label: "EUR/GBP" },
-  { value: "AUDCAD", label: "AUD/CAD" },
-  { value: "XAUUSD", label: "XAU/USD" },
-  { value: "XAGUSD", label: "XAG/USD" },
-  { value: "BTCUSD", label: "BTC/USD" },
-  { value: "ETHUSD", label: "ETH/USD" },
-  { value: "SOLUSD", label: "SOL/USD" },
-  { value: "US30", label: "US30" },
-  { value: "NAS100", label: "NAS100" },
-  { value: "SPX500", label: "SPX500" },
-];
+import { SymbolSelect } from "./SymbolSelect";
 
 const PERIODS = [
   { value: "1m", label: "1m", span: 1, type: "minute" as const },
@@ -229,15 +209,7 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
       <div className="bg-zinc-900 rounded-lg overflow-hidden">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-zinc-800">
-          <select
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            className="bg-zinc-800 text-white text-xs rounded px-2 py-1 focus:outline-none mr-2"
-          >
-            {SYMBOLS.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
+          <SymbolSelect value={symbol} onChange={setSymbol} className="text-xs mr-2" />
 
           {PERIODS.map((p) => (
             <button
