@@ -231,6 +231,65 @@ def db_get_ai_trade_logs(user_id: str | None = None, limit: int = 20) -> list[di
         return []
 
 
+## ── Trading Strategies ──────────────────────────────────────────
+
+
+def db_save_strategy(user_id: str, strategy: dict) -> dict | None:
+    db = get_db()
+    if not db:
+        return None
+    try:
+        row = {
+            "user_id": user_id,
+            "name": strategy.get("name", ""),
+            "symbols": strategy.get("symbols", ""),
+            "kline_period": strategy.get("kline_period", "1h"),
+            "rules": strategy.get("rules", ""),
+        }
+        result = db.table("trading_strategies").insert(row).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"db_save_strategy: {e}")
+        return None
+
+
+def db_update_strategy(strategy_id: str, updates: dict) -> dict | None:
+    db = get_db()
+    if not db:
+        return None
+    try:
+        updates["updated_at"] = "now()"
+        result = db.table("trading_strategies").update(updates).eq("id", strategy_id).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"db_update_strategy: {e}")
+        return None
+
+
+def db_get_strategies(user_id: str) -> list[dict]:
+    db = get_db()
+    if not db:
+        return []
+    try:
+        result = db.table("trading_strategies").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"db_get_strategies: {e}")
+        return []
+
+
+def db_delete_strategy(strategy_id: str) -> bool:
+    db = get_db()
+    if not db:
+        return False
+    try:
+        db.table("trading_strategies").delete().eq("id", strategy_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"db_delete_strategy: {e}")
+        return False
+
+
 ## ── Trading Accounts ────────────────────────────────────────────
 
 

@@ -827,6 +827,58 @@ async def ai_trade_session_detail(session_id: str, authorization: str = Header(d
     return _json.loads(_json.dumps(status, default=str))
 
 
+## ── Strategies ──────────────────────────────────────────────────
+
+
+class StrategyInput(BaseModel):
+    name: str
+    symbols: str
+    kline_period: str = "1h"
+    rules: str
+
+
+@router.get("/api/strategies")
+async def list_strategies(authorization: str = Header(default="")):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    from app.services.database import db_get_strategies
+    return {"strategies": db_get_strategies(user["id"])}
+
+
+@router.post("/api/strategies")
+async def save_strategy(body: StrategyInput, authorization: str = Header(default="")):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    from app.services.database import db_save_strategy
+    result = db_save_strategy(user["id"], body.model_dump())
+    return {"saved": result is not None, "strategy": result}
+
+
+@router.put("/api/strategies/{strategy_id}")
+async def update_strategy(strategy_id: str, body: StrategyInput, authorization: str = Header(default="")):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    from app.services.database import db_update_strategy
+    result = db_update_strategy(strategy_id, body.model_dump())
+    return {"updated": result is not None, "strategy": result}
+
+
+@router.delete("/api/strategies/{strategy_id}")
+async def delete_strategy(strategy_id: str, authorization: str = Header(default="")):
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    from app.services.database import db_delete_strategy
+    return {"deleted": db_delete_strategy(strategy_id)}
+
+
 @router.get("/api/ai-trade/logs")
 async def ai_trade_logs(limit: int = 20, authorization: str = Header(default="")):
     """Get AI trading analysis history."""

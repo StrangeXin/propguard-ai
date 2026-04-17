@@ -178,7 +178,7 @@ export default function Dashboard() {
 
           <Separator className="bg-zinc-800" />
 
-          <AITrader firmName={firmName} accountSize={accountSize} evaluationType={evaluationType || undefined} />
+          <AITrader firmName={firmName} accountSize={accountSize} evaluationType={evaluationType || undefined} symbol={selectedSymbol} />
 
           <Separator className="bg-zinc-800" />
 
