@@ -249,8 +249,16 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
             </div>
             <div>
               <label className="text-[10px] text-zinc-500 block mb-1">{t.symbols}</label>
-              <input value={symbols} onChange={(e) => setSymbols(e.target.value)} placeholder="EURUSD, GBPUSD"
-                className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none" />
+              <select value={symbols.split(",")[0]?.trim() || "EURUSD"}
+                onChange={(e) => setSymbols(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none">
+                {["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","NZDUSD","USDCHF",
+                  "EURJPY","GBPJPY","EURGBP","AUDCAD",
+                  "XAUUSD","XAGUSD","BTCUSD","ETHUSD","SOLUSD",
+                  "US30","NAS100","SPX500"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
           </div>
 
