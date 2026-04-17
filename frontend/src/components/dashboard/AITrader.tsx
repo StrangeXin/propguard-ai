@@ -233,7 +233,9 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
           <div>
             <label className="text-[10px] text-zinc-500 block mb-1">{t.rules}</label>
             <textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={4}
-              placeholder={locale === "zh" ? "输入你的交易策略，比如：赚更多的钱" : "Enter your trading strategy, e.g.: make more money"}
+              placeholder={locale === "zh"
+                ? "输入你的交易策略，例如：\n• 均线金叉做多，死叉做空\n• 价格突破布林带上轨做多\n• RSI低于30买入，高于70卖出"
+                : "Enter your trading strategy, e.g.:\n• Buy on golden cross, sell on death cross\n• Buy when price breaks above Bollinger upper band\n• Buy when RSI < 30, sell when RSI > 70"}
               className="w-full bg-zinc-800 text-white rounded px-3 py-2 text-xs font-mono resize-none focus:outline-none leading-relaxed placeholder-zinc-600" />
           </div>
 
