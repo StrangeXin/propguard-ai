@@ -5,7 +5,7 @@ import { useI18n } from "@/i18n/context";
 import { useAuth } from "@/app/providers";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SymbolSelect } from "./SymbolSelect";
+import { SymbolMultiSelect } from "./SymbolMultiSelect";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -54,7 +54,7 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   const [strategies, setStrategies] = useState<Any[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [strategyName, setStrategyName] = useState("MA Crossover");
-  const [symbols, setSymbols] = useState(symbol || "EURUSD");
+  const [symbols, setSymbols] = useState<string[]>(symbol ? [symbol] : ["EURUSD"]);
   const [rules, setRules] = useState("SMA10和SMA20，金叉做多，死叉做空\n首单0.01手，1.1倍加仓\n单向最多5单");
   const [interval, setInterval_] = useState("1h");
   const [loading, setLoading] = useState(false);
@@ -70,9 +70,11 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
 
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
-  // Sync symbol from parent
+  // Sync symbol from parent — add to list if not present
   useEffect(() => {
-    if (symbol && symbol !== symbols) setSymbols(symbol);
+    if (symbol && !symbols.includes(symbol)) {
+      setSymbols((prev) => [symbol, ...prev.filter((s) => s !== symbol)]);
+    }
   }, [symbol]);
 
   // Load strategies
@@ -112,13 +114,13 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   const selectStrategy = (s: Any) => {
     setSelectedId(s.id);
     setStrategyName(s.name);
-    setSymbols(s.symbols || "");
+    setSymbols(s.symbols ? s.symbols.split(",").map((x: string) => x.trim()).filter(Boolean) : []);
     setRules(s.rules || "");
     if (s.kline_period) setInterval_(s.kline_period);
   };
 
   const saveStrategy = async () => {
-    const body = { name: strategyName, symbols, kline_period: interval, rules };
+    const body = { name: strategyName, symbols: symbols.join(","), kline_period: interval, rules };
     const url = selectedId ? `${API_BASE}/api/strategies/${selectedId}` : `${API_BASE}/api/strategies`;
     const method = selectedId ? "PUT" : "POST";
     const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
@@ -143,13 +145,13 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   const newStrategy = () => {
     setSelectedId(null);
     setStrategyName("");
-    setSymbols(symbol || "EURUSD");
+    setSymbols(symbol ? [symbol] : ["EURUSD"]);
     setRules("");
   };
 
   const buildStrategy = () => ({
     name: strategyName || "unnamed",
-    symbols: symbols.split(",").map((s: string) => s.trim()).filter(Boolean),
+    symbols: symbols,
     kline_period: interval,
     rules: rules.split("\n").filter((r: string) => r.trim()),
   });
@@ -256,11 +258,10 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
             </div>
             <div>
               <label className="text-[10px] text-zinc-500 block mb-1">{t.symbols}</label>
-              <SymbolSelect
-                value={symbols.split(",")[0]?.trim() || "EURUSD"}
-                onChange={(s) => setSymbols(s)}
+              <SymbolMultiSelect
+                value={symbols}
+                onChange={setSymbols}
                 firmName={firmName}
-                className="w-full"
               />
             </div>
           </div>
