@@ -87,7 +87,7 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
 
   const [sessions, setSessions] = useState<AnyResult[]>([]);
   const [historyLogs, setHistoryLogs] = useState<AnyResult[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
 
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
@@ -123,9 +123,10 @@ export function AITrader({ firmName, accountSize, evaluationType }: {
 
   useEffect(() => {
     fetchSessions();
+    fetchHistory(); // Load history on mount
     const i = setInterval(fetchSessions, 10000);
     return () => clearInterval(i);
-  }, [fetchSessions]);
+  }, [fetchSessions, fetchHistory]);
 
   // Step 1: AI Analyze (dry run) → show confirmation
   const analyzeAndPropose = async () => {
