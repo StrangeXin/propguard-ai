@@ -175,16 +175,22 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   };
 
   const confirmExecute = async () => {
+    if (!pendingResult?.executions?.length) return;
     setExecuting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/ai-trade/analyze`, {
+      // Extract actions from dry run result and execute directly
+      const actions = pendingResult.executions.map((e: Any) => e.action).filter(Boolean);
+      const res = await fetch(`${API_BASE}/api/ai-trade/execute`, {
         method: "POST", headers,
-        body: JSON.stringify({
-          strategy: buildStrategy(), firm_name: firmName,
-          account_size: accountSize, evaluation_type: evaluationType, dry_run: false,
-        }),
+        body: JSON.stringify({ actions }),
       });
-      setPendingResult(await res.json());
+      const data = await res.json();
+      setPendingResult({
+        ...pendingResult,
+        dry_run: false,
+        actions_executed: data.actions_executed,
+        executions: data.executions,
+      });
       setShowConfirm(false);
       fetchHistory();
     } catch { setPendingResult({ error: "Execution failed" }); }

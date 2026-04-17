@@ -757,6 +757,49 @@ async def ai_trade_analyze(body: AITradeRequest, authorization: str = Header(def
     return _json.loads(_json.dumps(result, default=str))
 
 
+class ExecuteActionsInput(BaseModel):
+    actions: list[dict]
+
+
+@router.post("/api/ai-trade/execute")
+async def ai_trade_execute(body: ExecuteActionsInput, authorization: str = Header(default="")):
+    """Execute specific actions directly (from a previous dry run)."""
+    token = authorization.replace("Bearer ", "")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    executed = []
+    for action in body.actions:
+        action_type = action.get("type")
+        symbol = action.get("symbol", "")
+        volume = action.get("volume", 0.01)
+        sl = action.get("stop_loss")
+        tp = action.get("take_profit")
+        position_id = action.get("position_id")
+
+        try:
+            if action_type in ("buy", "sell"):
+                result = await mt5_place_order(symbol, action_type, volume, sl, tp)
+                executed.append({"action": action, "result": result})
+            elif action_type == "close" and position_id:
+                result = await mt5_close_position(position_id)
+                executed.append({"action": action, "result": result})
+            elif action_type == "modify" and position_id:
+                result = await mt5_modify_position(position_id, sl, tp)
+                executed.append({"action": action, "result": result})
+            else:
+                executed.append({"action": action, "status": "skipped"})
+        except Exception as e:
+            executed.append({"action": action, "status": "error", "error": str(e)})
+
+    import json as _json
+    return _json.loads(_json.dumps({
+        "actions_executed": len(executed),
+        "executions": executed,
+    }, default=str))
+
+
 @router.post("/api/ai-trade/start")
 async def ai_trade_start(body: AISessionRequest, authorization: str = Header(default="")):
     """Start an automated AI trading session."""
