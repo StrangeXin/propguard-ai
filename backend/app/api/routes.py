@@ -8,7 +8,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPExce
 from pydantic import BaseModel
 
 from app.services.auth import register_user, login_user, update_user, link_telegram, get_user_by_id
-from app.services.owner_resolver import require_user
+from app.services.owner_resolver import get_owner, require_user
+from app.services.quota import require_quota
 from app.models.owner import Owner
 from app.services.payments import create_checkout_session, handle_stripe_webhook
 from app.services.live_trading import (
@@ -235,7 +236,10 @@ class SignalInput(BaseModel):
 
 
 @router.post("/api/signals/parse")
-async def parse_and_score_signal(body: SignalInput):
+async def parse_and_score_signal(
+    body: SignalInput,
+    owner: Owner = Depends(require_quota("ai_score")),
+):
     """
     Parse a raw text message into a structured signal and score it.
     This is the main endpoint for Telegram bot webhook and manual testing.
@@ -244,6 +248,8 @@ async def parse_and_score_signal(body: SignalInput):
         text=body.text,
         chat_id=body.chat_id,
         forward_from=body.forward_from,
+        owner=owner,
+        consume_quota=False,  # already consumed by @require_quota dep
     )
     if scored is None:
         return {"parsed": False, "message": "Could not parse a trading signal from this text."}
@@ -316,7 +322,10 @@ async def get_signal_source(source_id: str):
 
 
 @router.get("/api/accounts/{account_id}/briefing")
-async def get_briefing(account_id: str, firm_name: str, account_size: int):
+async def get_briefing(
+    account_id: str, firm_name: str, account_size: int,
+    owner: Owner = Depends(require_quota("briefing")),
+):
     """Generate a pre-market AI briefing for an account."""
     account_state = await broker.get_account_state(account_id, firm_name, account_size)
     if account_state is None:
@@ -325,7 +334,9 @@ async def get_briefing(account_id: str, firm_name: str, account_size: int):
     report = evaluate_compliance(account_state)
     top = get_top_signals(5)
 
-    briefing = await generate_ai_briefing(account_state, report, top)
+    briefing = await generate_ai_briefing(
+        account_state, report, top, owner=owner, consume_quota=False,
+    )
 
     import json as _json
     return _json.loads(_json.dumps(briefing, default=str))
@@ -770,7 +781,11 @@ INTERVAL_MAP = {
 
 
 @router.post("/api/ai-trade/analyze")
-async def ai_trade_analyze(body: AITradeRequest, owner: Owner = Depends(require_user)):
+async def ai_trade_analyze(
+    body: AITradeRequest,
+    owner: Owner = Depends(require_user),
+    _q=Depends(require_quota("ai_trade_tick")),
+):
     """Run one AI trading cycle: analyze market + return/execute actions."""
     result = await ai_analyze_and_trade(
         strategy=body.strategy,
@@ -778,6 +793,8 @@ async def ai_trade_analyze(body: AITradeRequest, owner: Owner = Depends(require_
         account_size=body.account_size,
         evaluation_type=body.evaluation_type,
         dry_run=body.dry_run,
+        owner=owner,
+        consume_quota=False,  # @require_quota already consumed
     )
 
     # Save to database
@@ -850,7 +867,7 @@ async def ai_trade_start(body: AISessionRequest, owner: Owner = Depends(require_
     if existing and existing.get("status") == "running":
         return {"error": "Session already running", "session_id": session_id}
 
-    # Start in background
+    # Start in background. Each tick inside will consume ai_trade_tick quota.
     import asyncio
     asyncio.create_task(start_trading_session(
         session_id=session_id,
@@ -860,9 +877,49 @@ async def ai_trade_start(body: AISessionRequest, owner: Owner = Depends(require_
         account_size=body.account_size,
         evaluation_type=body.evaluation_type,
         dry_run=body.dry_run,
+        owner=owner,
     ))
 
     return {"started": True, "session_id": session_id, "interval": body.interval, "dry_run": body.dry_run}
+
+
+@router.post("/api/ai-trade/tick")
+async def ai_trade_tick(
+    body: AITradeRequest,
+    owner: Owner = Depends(get_owner),
+    _q=Depends(require_quota("ai_trade_tick")),
+):
+    """Single AI trading cycle — allowed for anon/free users who drive the
+    loop from the browser. Identical payload/response to /api/ai-trade/analyze
+    except this accepts anonymous owners.
+    """
+    result = await ai_analyze_and_trade(
+        strategy=body.strategy,
+        firm_name=body.firm_name,
+        account_size=body.account_size,
+        evaluation_type=body.evaluation_type,
+        dry_run=body.dry_run,
+        owner=owner,
+        consume_quota=False,  # @require_quota already consumed
+    )
+    # Log to DB (PR 1's db_save_ai_trade_log handles owner_id + owner_kind
+    # when user_id is provided; for anon we skip the log).
+    if owner.kind == "user":
+        from app.services.database import db_save_ai_trade_log
+        db_save_ai_trade_log(
+            user_id=owner.id,
+            strategy_name=body.strategy.get("name", ""),
+            symbols=",".join(body.strategy.get("symbols", [])),
+            analysis=result.get("analysis", ""),
+            actions_planned=result.get("actions_planned", 0),
+            actions_executed=result.get("actions_executed", 0),
+            prompt=result.get("prompt", ""),
+            result=result,
+            dry_run=body.dry_run,
+        )
+
+    import json as _json
+    return _json.loads(_json.dumps(result, default=str))
 
 
 @router.post("/api/ai-trade/stop/{session_id}")

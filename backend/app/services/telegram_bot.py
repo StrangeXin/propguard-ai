@@ -29,10 +29,16 @@ async def handle_telegram_message(
     text: str,
     chat_id: str,
     forward_from: str | None = None,
+    owner=None,
+    consume_quota: bool = True,
 ) -> ScoredSignal | None:
     """
     Process an incoming Telegram message.
     Returns a ScoredSignal if we could parse and score it, None otherwise.
+
+    `owner` is passed through to the AI scorer for quota + cost tracking.
+    The Telegram polling loop calls this with owner=None — scoring then
+    falls back to the rule-based path inside score_signal.
     """
     # Determine source
     source_id = forward_from or f"direct-{chat_id}"
@@ -45,7 +51,7 @@ async def handle_telegram_message(
         return None
 
     # Score the signal
-    score = await score_signal(signal)
+    score = await score_signal(signal, owner=owner, consume_quota=consume_quota)
 
     scored = ScoredSignal(signal=signal, score=score)
 

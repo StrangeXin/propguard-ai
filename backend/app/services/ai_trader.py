@@ -275,11 +275,20 @@ async def ai_analyze_and_trade(
     account_size: int = 100000,
     evaluation_type: str | None = None,
     dry_run: bool = False,
+    owner=None,
+    consume_quota: bool = True,
 ) -> dict:
-    """执行一次AI交易分析"""
+    """执行一次AI交易分析.
+
+    `owner` must be provided to call Claude (used for quota + cost ledger).
+    `consume_quota=False` tells AIClient the route already charged via
+    @require_quota, so we skip double-consuming.
+    """
     settings = get_settings()
     if not settings.anthropic_api_key:
         return {"error": "Anthropic API key not configured"}
+    if owner is None:
+        return {"error": "Owner context required for AI trading"}
 
     # 1. 收集上下文
     context = await collect_trading_context(strategy, firm_name, account_size, evaluation_type)
@@ -314,19 +323,18 @@ async def ai_analyze_and_trade(
 
 请根据策略和当前状态，决定现在应该执行什么操作。只返回JSON。"""
 
-    # 3. 调用 Claude
+    # 3. 调用 Claude via AIClient (handles quota + cost ledger)
     try:
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-
-        response = await client.messages.create(
-            model=settings.ai_model,
+        from app.services.ai_client import AIClient
+        ai = AIClient(owner)
+        resp = await ai.trade_tick(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=user_prompt,
             max_tokens=1000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+            consume_quota=consume_quota,
         )
 
-        result_text = response.content[0].text.strip()
+        result_text = resp["text"].strip()
         if result_text.startswith("```"):
             result_text = result_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
@@ -387,6 +395,7 @@ async def start_trading_session(
     session_id: str, strategy: dict, interval_seconds: int,
     firm_name: str = "ftmo", account_size: int = 100000,
     evaluation_type: str | None = None, dry_run: bool = False,
+    owner=None,
 ):
     _sessions[session_id] = {
         "status": "running", "strategy": strategy, "interval": interval_seconds,
@@ -399,7 +408,8 @@ async def start_trading_session(
     while _sessions.get(session_id, {}).get("status") == "running":
         try:
             result = await ai_analyze_and_trade(
-                strategy, firm_name, account_size, evaluation_type, dry_run
+                strategy, firm_name, account_size, evaluation_type, dry_run,
+                owner=owner,
             )
             _sessions[session_id]["cycles"] += 1
             _sessions[session_id]["last_result"] = result

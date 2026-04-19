@@ -142,37 +142,44 @@ def _rule_based_score(
 
 async def score_signal(
     signal: Signal,
+    owner=None,
     daily_remaining: float = 5000,
     dd_remaining: float = 10000,
+    consume_quota: bool = True,
 ) -> SignalScore:
-    """
-    Score a trading signal using Claude API, with rule-based fallback.
+    """Score a trading signal using Claude via AIClient, with rule-based fallback.
+
+    `owner` is the caller's Owner (required when AIClient is used). If None,
+    we skip the Claude path and use the rule-based fallback. `consume_quota`
+    lets routes that already charged via @require_quota avoid double-consuming.
     """
     settings = get_settings()
     source = get_source_stats(signal.source_id)
 
-    # Try Claude API first
-    if settings.anthropic_api_key:
+    # AIClient path requires both an API key and an owner context.
+    if settings.anthropic_api_key and owner is not None:
         try:
-            return await _ai_score(signal, source, daily_remaining, dd_remaining)
+            from app.services.quota import QuotaExceeded
+            return await _ai_score(signal, owner, source, daily_remaining, dd_remaining,
+                                    consume_quota=consume_quota)
+        except QuotaExceeded:
+            raise  # let the route layer map to 402
         except Exception as e:
             logger.warning(f"AI scoring failed, falling back to rules: {e}")
 
-    # Fallback to rule-based scoring
     return _rule_based_score(signal, source, daily_remaining, dd_remaining)
 
 
 async def _ai_score(
     signal: Signal,
+    owner,
     source: SignalSource | None,
     daily_remaining: float,
     dd_remaining: float,
+    consume_quota: bool = True,
 ) -> SignalScore:
-    """Score using Claude API with structured output."""
-    import anthropic
-
-    settings = get_settings()
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    """Score using Claude via AIClient."""
+    from app.services.ai_client import AIClient
 
     prompt = SCORING_PROMPT.format(
         symbol=signal.symbol,
@@ -180,7 +187,7 @@ async def _ai_score(
         entry=signal.entry_price or "not specified",
         sl=signal.stop_loss or "not specified",
         tp=signal.take_profit or "not specified",
-        raw_text=signal.raw_text[:500],  # truncate long messages
+        raw_text=signal.raw_text[:500],
         source_name=signal.source_name,
         win_rate=f"{source.win_rate:.1%}" if source and source.win_rate else "unknown",
         avg_rr=f"{source.avg_rr:.1f}" if source and source.avg_rr else "unknown",
@@ -189,13 +196,12 @@ async def _ai_score(
         dd_remaining=f"{dd_remaining:.2f}",
     )
 
-    response = await client.messages.create(
-        model=settings.ai_model,
-        max_tokens=200,
-        messages=[{"role": "user", "content": prompt}],
+    ai = AIClient(owner)
+    resp = await ai.score_signal(
+        system_prompt="", user_prompt=prompt, max_tokens=200,
+        consume_quota=consume_quota,
     )
-
-    result_text = response.content[0].text.strip()
+    result_text = resp["text"].strip()
     # Handle markdown-wrapped JSON (```json ... ```)
     if result_text.startswith("```"):
         result_text = result_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
