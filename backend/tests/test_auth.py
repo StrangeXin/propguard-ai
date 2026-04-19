@@ -65,6 +65,15 @@ class TestAuth:
         assert user is None
 
 
+class TestMetaapiColumn:
+    def test_registered_user_has_metaapi_account_id_none(self):
+        email = _unique_email("meta")
+        user = register_user(email, "password123")
+        # Must be present as a key so downstream user_dict_to_owner can read it.
+        assert "metaapi_account_id" in user
+        assert user["metaapi_account_id"] is None
+
+
 class TestUserToOwner:
     def test_free_user_without_metaapi(self):
         from app.services.auth import user_dict_to_owner

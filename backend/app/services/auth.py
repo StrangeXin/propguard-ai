@@ -64,6 +64,7 @@ def register_user(email: str, password: str, name: str = "") -> dict:
         "password_hash": pw_hash,
         "tier": "free",
         "telegram_chat_id": None,
+        "metaapi_account_id": None,
         "created_at": datetime.now().isoformat(),
     }
     _users_mem[email] = user
