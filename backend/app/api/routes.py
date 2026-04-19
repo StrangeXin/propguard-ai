@@ -541,14 +541,29 @@ class LoginInput(BaseModel):
 
 
 @router.post("/api/auth/register")
-async def auth_register(body: RegisterInput):
+async def auth_register(body: RegisterInput, request: Request):
     try:
         user = register_user(body.email, body.password, body.name)
-        # Auto-login after register
-        result = login_user(body.email, body.password)
-        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Claim any anon-session data for this new user before logging in, so the
+    # dashboard they land on already shows their sandbox history.
+    claimed: dict[str, int] = {}
+    total_claimed = 0
+    from app.services.owner_resolver import ANON_COOKIE
+    from app.services.claim import claim_anon_data
+    anon_id = request.cookies.get(ANON_COOKIE)
+    if anon_id:
+        claimed = claim_anon_data(anon_id, user["id"])
+        total_claimed = sum(claimed.values())
+
+    login_result = login_user(body.email, body.password)
+    return {
+        **login_result,
+        "claimed": claimed,
+        "total_claimed": total_claimed,
+    }
 
 
 @router.post("/api/auth/login")
