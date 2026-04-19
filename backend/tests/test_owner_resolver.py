@@ -83,3 +83,32 @@ class TestGetOwnerUser:
         resp = client.get("/whoami", headers={"Authorization": "Bearer garbage"})
         assert resp.status_code == 200
         assert resp.json()["kind"] == "anon"
+
+
+class TestRequireUser:
+    def _app_with_guard(self):
+        from app.services.owner_resolver import require_user
+        app = FastAPI()
+
+        @app.get("/private")
+        def private(owner: Owner = Depends(require_user)):
+            return {"id": owner.id}
+
+        return app
+
+    def test_anon_rejected_with_401(self):
+        resp = TestClient(self._app_with_guard()).get("/private")
+        assert resp.status_code == 401
+        assert "authentication" in resp.json()["detail"].lower()
+
+    def test_user_allowed(self):
+        import secrets
+        from app.services.auth import register_user, login_user, _users_mem
+        _users_mem.clear()
+        email = f"reqguard-{secrets.token_hex(4)}@test.propguard.ai"
+        register_user(email, "password123")
+        token = login_user(email, "password123")["token"]
+        resp = TestClient(self._app_with_guard()).get(
+            "/private", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp.status_code == 200

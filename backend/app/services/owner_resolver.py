@@ -10,7 +10,7 @@ Resolution order:
 import hashlib
 import logging
 
-from fastapi import Depends, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 
 from app.models.owner import Owner
 from app.services.anon_sessions import (
@@ -71,3 +71,10 @@ def get_owner(request: Request, response: Response) -> Owner:
 
     # 3. Mint a fresh anon session
     return _mint_anon(request, response)
+
+
+def require_user(owner: Owner = Depends(get_owner)) -> Owner:
+    """Endpoints that still require authentication use this instead of get_owner."""
+    if owner.kind != "user":
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return owner
