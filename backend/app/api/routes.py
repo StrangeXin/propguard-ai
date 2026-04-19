@@ -729,6 +729,20 @@ async def trading_account_info(owner: Owner = Depends(require_user)):
     }
 
 
+@router.post("/api/sandbox/reset")
+async def sandbox_reset(owner: Owner = Depends(require_user)):
+    """Reset this owner's sandbox to a clean $100,000 state.
+
+    Returns 400 if the owner is bound to a real MetaApi account (nothing
+    to reset). PR 2b will add quota enforcement to prevent abuse.
+    """
+    if owner.metaapi_account_id:
+        raise HTTPException(400, detail="Real accounts cannot be reset")
+    broker_impl = get_broker(owner)
+    await broker_impl.reset()
+    return {"success": True}
+
+
 ## ── AI Trading ──────────────────────────────────────────────────
 
 
