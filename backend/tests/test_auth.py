@@ -63,3 +63,37 @@ class TestAuth:
     def test_verify_invalid_token(self):
         user = verify_token("invalid.token.here")
         assert user is None
+
+
+class TestMetaapiColumn:
+    def test_registered_user_has_metaapi_account_id_none(self):
+        email = _unique_email("meta")
+        user = register_user(email, "password123")
+        # Must be present as a key so downstream user_dict_to_owner can read it.
+        assert "metaapi_account_id" in user
+        assert user["metaapi_account_id"] is None
+
+
+class TestUserToOwner:
+    def test_free_user_without_metaapi(self):
+        from app.services.auth import user_dict_to_owner
+        user = {"id": "u-1", "email": "a@b.c", "tier": "free", "metaapi_account_id": None}
+        o = user_dict_to_owner(user)
+        assert o.id == "u-1"
+        assert o.kind == "user"
+        assert o.plan == "free"
+        assert o.metaapi_account_id is None
+
+    def test_pro_user_with_metaapi(self):
+        from app.services.auth import user_dict_to_owner
+        user = {"id": "u-2", "tier": "pro", "metaapi_account_id": "acct-xyz"}
+        o = user_dict_to_owner(user)
+        assert o.plan == "pro"
+        assert o.metaapi_account_id == "acct-xyz"
+
+    def test_missing_tier_defaults_free(self):
+        from app.services.auth import user_dict_to_owner
+        user = {"id": "u-3"}
+        o = user_dict_to_owner(user)
+        assert o.plan == "free"
+        assert o.metaapi_account_id is None
