@@ -43,7 +43,7 @@ const texts = {
   en: {
     hero: "Don't help you trade. Just help you not get eliminated.",
     heroSub: "AI-powered risk management for Prop Firm traders. Real-time compliance monitoring, intelligent signal filtering, position sizing — all in one dashboard.",
-    cta: "Get Started Free",
+    cta: "Try for free — no signup required",
     login: "Sign In",
     dashboard: "Go to Dashboard",
     featuresTitle: "Everything you need to pass the challenge",
@@ -60,7 +60,7 @@ const texts = {
   zh: {
     hero: "不帮你交易，只帮你不被淘汰。",
     heroSub: "Prop Firm 交易者的 AI 风控管家。实时合规监控、智能信号过滤、仓位计算 —— 一个 Dashboard 搞定。",
-    cta: "免费开始",
+    cta: "免费试用，无需注册",
     login: "登录",
     dashboard: "进入 Dashboard",
     featuresTitle: "通过挑战所需的一切",
@@ -118,7 +118,7 @@ export default function HomePage() {
             {t.heroSub}
           </p>
           <div className="flex gap-4 justify-center pt-4">
-            <Link href="/login" className="px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors text-lg">
+            <Link href="/dashboard" className="px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors text-lg">
               {t.cta}
             </Link>
             <Link href="/docs" className="px-8 py-3 border border-zinc-700 text-zinc-300 font-medium rounded-lg hover:border-zinc-500 hover:text-white transition-colors text-lg">
@@ -183,7 +183,7 @@ export default function HomePage() {
         <div className="max-w-2xl mx-auto text-center space-y-4">
           <h2 className="text-3xl font-bold text-white">{t.ctaBottom}</h2>
           <p className="text-zinc-400">{t.ctaBottomSub}</p>
-          <Link href="/login" className="inline-block px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors text-lg mt-4">
+          <Link href="/dashboard" className="inline-block px-8 py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors text-lg mt-4">
             {t.cta}
           </Link>
         </div>

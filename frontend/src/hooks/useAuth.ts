@@ -10,6 +10,7 @@ interface User {
   name: string;
   tier: string;
   telegram_chat_id: string | null;
+  metaapi_account_id: string | null;
 }
 
 interface AuthState {
@@ -41,6 +42,7 @@ export function useAuthState(): AuthState {
     try {
       const res = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${t}` },
+        credentials: "include",  // forward anon_session_id cookie for consistency with api.ts
       });
       if (res.ok) {
         const data = await res.json();

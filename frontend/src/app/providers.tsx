@@ -3,6 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { I18nProvider } from "@/i18n/context";
 import { useAuthState } from "@/hooks/useAuth";
+import { UpgradeModal } from "@/components/UpgradeModal";
 
 type AuthContextType = ReturnType<typeof useAuthState>;
 
@@ -22,7 +23,10 @@ function AuthProvider({ children }: { children: ReactNode }) {
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <I18nProvider>
-      <AuthProvider>{children}</AuthProvider>
+      <AuthProvider>
+        {children}
+        <UpgradeModal />
+      </AuthProvider>
     </I18nProvider>
   );
 }
