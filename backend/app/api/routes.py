@@ -12,11 +12,12 @@ from app.services.owner_resolver import require_user
 from app.models.owner import Owner
 from app.services.payments import create_checkout_session, handle_stripe_webhook
 from app.services.live_trading import (
-    mt5_place_order, mt5_close_position, mt5_modify_position,
-    mt5_get_positions, mt5_get_orders,
-    mt5_create_pending_order, mt5_cancel_order,
-    mt5_close_position_partially, mt5_get_symbol_spec,
-    mt5_get_symbol_price, mt5_get_trade_history, mt5_get_account_info,
+    mt5_get_symbol_spec,
+    mt5_get_symbol_price,
+)
+from app.services.broker_factory import get_broker
+from app.services.broker_types import (
+    OrderResult, PositionDTO, OrderDTO, ClosedTrade,
 )
 from app.services.ai_trader import (
     ai_analyze_and_trade, start_trading_session, stop_trading_session,
@@ -48,6 +49,59 @@ from app.websocket.manager import ws_manager
 
 router = APIRouter()
 broker = BrokerAPIClient()
+
+
+# ── Broker DTO → frontend-shape dict helpers ─────────────────────────
+# The frontend TradingPanel reads these exact field names (side, volume,
+# entry_price, current_price, profit, stop_loss, take_profit, price).
+# Preserve them so migrating endpoints from mt5_* → BrokerBase is a no-op
+# for the UI.
+
+
+def _position_to_dict(p: PositionDTO) -> dict:
+    return {
+        "id": p.id,
+        "symbol": p.symbol,
+        "side": p.side,
+        "volume": p.size,
+        "entry_price": p.entry_price,
+        "current_price": p.current_price,
+        "profit": p.unrealized_pnl,
+        "stop_loss": p.stop_loss,
+        "take_profit": p.take_profit,
+    }
+
+
+def _order_to_dict(o: OrderDTO) -> dict:
+    return {
+        "id": o.id,
+        "symbol": o.symbol,
+        "type": f"ORDER_TYPE_{o.side.upper()}_{o.order_type.upper()}",
+        "side": o.side,
+        "volume": o.size,
+        "price": o.price,
+        "stop_loss": o.stop_loss,
+        "take_profit": o.take_profit,
+    }
+
+
+def _trade_to_dict(t: ClosedTrade) -> dict:
+    side = "buy" if t.side == "long" else "sell"
+    return {
+        "id": t.id,
+        "symbol": t.symbol,
+        "side": side,
+        "type": "DEAL_TYPE_BUY" if t.side == "long" else "DEAL_TYPE_SELL",
+        "volume": t.size,
+        "price": t.exit_price,
+        "entry_price": t.entry_price,
+        "exit_price": t.exit_price,
+        "profit": t.pnl,
+    }
+
+
+def _result_to_dict(r: OrderResult) -> dict:
+    return {"success": r.success, "order_id": r.order_id, "error": r.message}
 
 
 @router.get("/api/firms")
@@ -529,57 +583,66 @@ class ModifyPositionInput(BaseModel):
 
 @router.get("/api/trading/account")
 async def trading_account(owner: Owner = Depends(require_user)):
-    """Get MT5 trading account info + positions."""
-    positions = await mt5_get_positions()
-    account_state = await broker.get_account_state("demo-001", "ftmo", 100000)
-
-    result = {
-        "balance": account_state.current_balance if account_state else 0,
-        "equity": account_state.current_equity if account_state else 0,
-        "initial_balance": account_state.initial_balance if account_state else 100000,
-        "pnl": account_state.total_pnl if account_state else 0,
-        "pnl_pct": round(account_state.total_pnl / account_state.initial_balance * 100, 2) if account_state and account_state.initial_balance > 0 else 0,
+    """Get trading account info + positions."""
+    broker_impl = get_broker(owner)
+    info = await broker_impl.account_info()
+    positions = await broker_impl.positions()
+    initial = 100000.0  # initial balance baseline; sandbox starts at 100k, MetaApi ignores
+    pnl = info.equity - initial
+    return {
+        "balance": info.balance,
+        "equity": info.equity,
+        "initial_balance": initial,
+        "pnl": round(pnl, 2),
+        "pnl_pct": round(pnl / initial * 100, 2) if initial > 0 else 0,
         "open_positions": len(positions),
         "total_trades": 0,
         "winning_trades": 0,
         "win_rate": 0,
-        "positions": positions,
+        "positions": [_position_to_dict(p) for p in positions],
         "recent_trades": [],
-        "source": "metaapi_mt5_demo",
+        "source": "metaapi_mt5_demo" if owner.metaapi_account_id else "sandbox",
     }
-    import json as _json
-    return _json.loads(_json.dumps(result, default=str))
 
 
 @router.post("/api/trading/order")
 async def trading_place_order(body: PlaceOrderInput, owner: Owner = Depends(require_user)):
-    """Place an order on MT5 via MetaApi."""
-    result = await mt5_place_order(
+    """Place a market order via the broker."""
+    broker_impl = get_broker(owner)
+    result = await broker_impl.place_market_order(
         symbol=body.symbol,
         side=body.side,
         volume=body.size,
-        stop_loss=body.stop_loss,
-        take_profit=body.take_profit,
+        sl=body.stop_loss,
+        tp=body.take_profit,
     )
-    return result
+    return _result_to_dict(result)
 
 
 @router.post("/api/trading/position/{position_id}/modify")
 async def trading_modify(position_id: str, body: ModifyPositionInput, owner: Owner = Depends(require_user)):
-    """Modify SL/TP on MT5."""
-    return await mt5_modify_position(position_id, body.stop_loss, body.take_profit)
+    """Modify SL/TP on an open position."""
+    broker_impl = get_broker(owner)
+    result = await broker_impl.modify_position(
+        position_id, sl=body.stop_loss, tp=body.take_profit,
+    )
+    return _result_to_dict(result)
 
 
 @router.post("/api/trading/position/{position_id}/close")
 async def trading_close(position_id: str, owner: Owner = Depends(require_user)):
-    """Close a position on MT5."""
-    return await mt5_close_position(position_id)
+    """Close a position fully."""
+    broker_impl = get_broker(owner)
+    return _result_to_dict(await broker_impl.close_position(position_id))
 
 
 @router.post("/api/trading/position/{position_id}/close-partial")
 async def trading_close_partial(position_id: str, volume: float, owner: Owner = Depends(require_user)):
     """Partially close a position."""
-    return await mt5_close_position_partially(position_id, volume)
+    broker_impl = get_broker(owner)
+    return _result_to_dict(
+        await broker_impl.close_position_partial(position_id, volume)
+    )
 
 
 class PendingOrderInput(BaseModel):
@@ -595,30 +658,40 @@ class PendingOrderInput(BaseModel):
 @router.post("/api/trading/pending-order")
 async def trading_pending_order(body: PendingOrderInput, owner: Owner = Depends(require_user)):
     """Place a limit or stop order."""
-    return await mt5_create_pending_order(
-        symbol=body.symbol, side=body.side, volume=body.size,
-        price=body.price, order_type=body.order_type,
-        stop_loss=body.stop_loss, take_profit=body.take_profit,
+    broker_impl = get_broker(owner)
+    result = await broker_impl.place_pending_order(
+        symbol=body.symbol,
+        side=body.side,
+        volume=body.size,
+        order_type=body.order_type,
+        price=body.price,
+        sl=body.stop_loss,
+        tp=body.take_profit,
     )
+    return _result_to_dict(result)
 
 
 @router.get("/api/trading/orders")
 async def trading_orders(owner: Owner = Depends(require_user)):
     """Get all pending orders."""
-    return {"orders": await mt5_get_orders()}
+    broker_impl = get_broker(owner)
+    orders = await broker_impl.pending_orders()
+    return {"orders": [_order_to_dict(o) for o in orders]}
 
 
 @router.post("/api/trading/order/{order_id}/cancel")
 async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_user)):
     """Cancel a pending order."""
-    return await mt5_cancel_order(order_id)
+    broker_impl = get_broker(owner)
+    return _result_to_dict(await broker_impl.cancel_order(order_id))
 
 
 @router.get("/api/trading/history")
 async def trading_history(days: int = 30, owner: Owner = Depends(require_user)):
     """Get closed trade history."""
-    trades = await mt5_get_trade_history(days=min(days, 90))
-    # Calculate stats
+    broker_impl = get_broker(owner)
+    trades_typed = await broker_impl.history(limit=100)
+    trades = [_trade_to_dict(t) for t in trades_typed]
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)
     total_pnl = sum(t.get("profit", 0) for t in trades)
@@ -643,10 +716,31 @@ async def trading_symbol_info(symbol: str):
 
 @router.get("/api/trading/account-info")
 async def trading_account_info(owner: Owner = Depends(require_user)):
-    """Get full MT5 account information."""
-    info = await mt5_get_account_info()
-    import json as _json
-    return _json.loads(_json.dumps(info, default=str)) if info else {"error": "Not connected"}
+    """Get full account information."""
+    broker_impl = get_broker(owner)
+    info = await broker_impl.account_info()
+    return {
+        "balance": info.balance,
+        "equity": info.equity,
+        "margin": info.margin,
+        "freeMargin": info.free_margin,
+        "free_margin": info.free_margin,
+        "currency": info.currency,
+    }
+
+
+@router.post("/api/sandbox/reset")
+async def sandbox_reset(owner: Owner = Depends(require_user)):
+    """Reset this owner's sandbox to a clean $100,000 state.
+
+    Returns 400 if the owner is bound to a real MetaApi account (nothing
+    to reset). PR 2b will add quota enforcement to prevent abuse.
+    """
+    if owner.metaapi_account_id:
+        raise HTTPException(400, detail="Real accounts cannot be reset")
+    broker_impl = get_broker(owner)
+    await broker_impl.reset()
+    return {"success": True}
 
 
 ## ── AI Trading ──────────────────────────────────────────────────
@@ -711,6 +805,7 @@ class ExecuteActionsInput(BaseModel):
 @router.post("/api/ai-trade/execute")
 async def ai_trade_execute(body: ExecuteActionsInput, owner: Owner = Depends(require_user)):
     """Execute specific actions directly (from a previous dry run)."""
+    broker_impl = get_broker(owner)
     executed = []
     for action in body.actions:
         action_type = action.get("type")
@@ -722,14 +817,16 @@ async def ai_trade_execute(body: ExecuteActionsInput, owner: Owner = Depends(req
 
         try:
             if action_type in ("buy", "sell"):
-                result = await mt5_place_order(symbol, action_type, volume, sl, tp)
-                executed.append({"action": action, "result": result})
+                result = await broker_impl.place_market_order(
+                    symbol=symbol, side=action_type, volume=volume, sl=sl, tp=tp,
+                )
+                executed.append({"action": action, "result": _result_to_dict(result)})
             elif action_type == "close" and position_id:
-                result = await mt5_close_position(position_id)
-                executed.append({"action": action, "result": result})
+                result = await broker_impl.close_position(position_id)
+                executed.append({"action": action, "result": _result_to_dict(result)})
             elif action_type == "modify" and position_id:
-                result = await mt5_modify_position(position_id, sl, tp)
-                executed.append({"action": action, "result": result})
+                result = await broker_impl.modify_position(position_id, sl=sl, tp=tp)
+                executed.append({"action": action, "result": _result_to_dict(result)})
             else:
                 executed.append({"action": action, "status": "skipped"})
         except Exception as e:

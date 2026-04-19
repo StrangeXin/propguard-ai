@@ -1,0 +1,18 @@
+{
+  "note": "Only USD-quote instruments are supported in sandbox v1. Adding JPY/CHF/CAD quote pairs requires cross-currency conversion in _pnl. Symbols not listed here are rejected at order time.",
+  "default_spread_pips": 2,
+  "symbols": {
+    "EURUSD": {"pip_size": 0.0001, "spread_pips": 1},
+    "GBPUSD": {"pip_size": 0.0001, "spread_pips": 1.5},
+    "AUDUSD": {"pip_size": 0.0001, "spread_pips": 1.2},
+    "NZDUSD": {"pip_size": 0.0001, "spread_pips": 1.8},
+    "XAUUSD": {"pip_size": 0.1, "spread_pips": 30},
+    "XAGUSD": {"pip_size": 0.01, "spread_pips": 5},
+    "BTCUSD": {"pip_size": 1, "spread_pips": 5},
+    "ETHUSD": {"pip_size": 0.1, "spread_pips": 10},
+    "SOLUSD": {"pip_size": 0.01, "spread_pips": 3},
+    "NAS100": {"pip_size": 0.1, "spread_pips": 5},
+    "US30": {"pip_size": 1, "spread_pips": 5},
+    "SPX500": {"pip_size": 0.1, "spread_pips": 3}
+  }
+}
