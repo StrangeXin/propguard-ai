@@ -157,25 +157,95 @@ class SandboxBroker:
                                message="Sandbox persistence failed")
         return OrderResult(success=True, order_id=pid, message=None)
 
-    # Stubs — Task 6 replaces these.
     async def place_pending_order(self, *_, **__) -> OrderResult:
         return OrderResult(False, None, "not implemented yet")
 
     async def close_position(self, position_id: str) -> OrderResult:
-        return OrderResult(False, None, "not implemented yet")
+        row = sandbox_get_position(position_id)
+        if not row or row["owner_id"] != self._owner.id:
+            return OrderResult(False, None, "Position not found")
+        return await self._close_internal(row, size_to_close=float(row["size"]))
 
     async def close_position_partial(self, position_id: str, volume: float) -> OrderResult:
-        return OrderResult(False, None, "not implemented yet")
+        row = sandbox_get_position(position_id)
+        if not row or row["owner_id"] != self._owner.id:
+            return OrderResult(False, None, "Position not found")
+        size = float(row["size"])
+        if volume <= 0 or volume >= size:
+            return OrderResult(False, None, "Invalid partial close volume")
+        return await self._close_internal(row, size_to_close=volume)
+
+    async def _close_internal(self, row: dict, size_to_close: float) -> OrderResult:
+        symbol = row["symbol"]
+        side = row["side"]
+        mid = await get_current_price(symbol)
+        if mid is None:
+            return OrderResult(False, None, f"Cannot get price for {symbol}")
+        exit_side = "sell" if side == "long" else "buy"
+        exit_price = _apply_spread(mid, symbol, exit_side)
+        pnl = _pnl(side, size_to_close, float(row["entry_price"]), exit_price, symbol)
+        new_balance = float(self._account.get("balance", 100000)) + pnl
+        sandbox_update_balance(self._owner.id, new_balance)
+        self._account["balance"] = new_balance
+
+        opened_at = row["opened_at"]
+        if isinstance(opened_at, str):
+            opened_at = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
+        sandbox_insert_closed_trade(
+            self._owner.id, self._owner.kind,
+            symbol=symbol, side=side, size=size_to_close,
+            entry_price=float(row["entry_price"]), exit_price=exit_price,
+            pnl=round(pnl, 2),
+            opened_at=opened_at, closed_at=datetime.now(timezone.utc),
+        )
+
+        remaining = float(row["size"]) - size_to_close
+        if remaining <= 1e-9:
+            sandbox_delete_position(row["id"])
+        else:
+            sandbox_update_position(row["id"], {"size": remaining})
+        return OrderResult(True, row["id"], None)
 
     async def modify_position(self, position_id: str,
-                               sl: float | None = None, tp: float | None = None) -> OrderResult:
-        return OrderResult(False, None, "not implemented yet")
+                               sl: float | None = None,
+                               tp: float | None = None) -> OrderResult:
+        row = sandbox_get_position(position_id)
+        if not row or row["owner_id"] != self._owner.id:
+            return OrderResult(False, None, "Position not found")
+        updates: dict = {}
+        if sl is not None:
+            updates["stop_loss"] = sl
+        if tp is not None:
+            updates["take_profit"] = tp
+        if updates:
+            sandbox_update_position(position_id, updates)
+        return OrderResult(True, position_id, None)
 
     async def cancel_order(self, order_id: str) -> OrderResult:
         return OrderResult(False, None, "not implemented yet")
 
     async def history(self, limit: int = 50) -> list[ClosedTrade]:
-        return []
+        rows = sandbox_list_closed_trades(self._owner.id, limit=limit)
+        out = []
+        for row in rows:
+            opened = row["opened_at"]
+            closed = row["closed_at"]
+            if isinstance(opened, str):
+                opened = datetime.fromisoformat(opened.replace("Z", "+00:00"))
+            if isinstance(closed, str):
+                closed = datetime.fromisoformat(closed.replace("Z", "+00:00"))
+            out.append(ClosedTrade(
+                id=row["id"],
+                symbol=row["symbol"],
+                side=row["side"],
+                size=float(row["size"]),
+                entry_price=float(row["entry_price"]),
+                exit_price=float(row["exit_price"]),
+                pnl=float(row["pnl"]),
+                opened_at=opened,
+                closed_at=closed,
+            ))
+        return out
 
     async def symbol_info(self, symbol: str) -> dict:
         return {"symbol": symbol, "sandbox": True}
