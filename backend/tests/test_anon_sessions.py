@@ -31,3 +31,12 @@ class TestAnonSessions:
 
     def test_get_missing_returns_none(self):
         assert get_anon_session("00000000-0000-0000-0000-000000000000") is None
+
+    def test_touch_updates_last_active(self):
+        import time
+        sid = create_anon_session()
+        before = get_anon_session(sid)["last_active_at"]
+        time.sleep(1.1)  # ensure timestamp resolution difference
+        touch_anon_session(sid)
+        after = get_anon_session(sid)["last_active_at"]
+        assert after > before
