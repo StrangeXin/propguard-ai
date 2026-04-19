@@ -589,6 +589,44 @@ async def auth_link_telegram(body: LinkTelegramInput, owner: Owner = Depends(req
     return {"linked": True}
 
 
+class BrokerConnectInput(BaseModel):
+    metaapi_account_id: str
+
+
+@router.post("/api/user/broker/connect")
+async def user_broker_connect(
+    body: BrokerConnectInput, owner: Owner = Depends(require_user),
+):
+    """Validate + persist a user's MetaApi account binding.
+
+    Free users can call this to upgrade their experience (sandbox → real).
+    Paid users use it to switch accounts.
+    """
+    acct_id = body.metaapi_account_id.strip()
+    if not acct_id or len(acct_id) < 20:
+        raise HTTPException(400, "Invalid MetaApi account ID format.")
+
+    from app.services.metaapi_admin import verify_metaapi_account
+    ok, message = await verify_metaapi_account(acct_id)
+    if not ok:
+        raise HTTPException(400, message)
+
+    from app.services.auth import update_user
+    updated = update_user(owner.id, {"metaapi_account_id": acct_id})
+    if not updated:
+        raise HTTPException(500, "Failed to save account binding.")
+
+    return {"success": True, "message": message, "user": updated}
+
+
+@router.delete("/api/user/broker")
+async def user_broker_disconnect(owner: Owner = Depends(require_user)):
+    """Unbind — user reverts to sandbox mode on next request."""
+    from app.services.auth import update_user
+    updated = update_user(owner.id, {"metaapi_account_id": None})
+    return {"success": True, "user": updated}
+
+
 ## ── Paper Trading ───────────────────────────────────────────────
 
 
