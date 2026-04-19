@@ -59,3 +59,27 @@ class TestGetOwnerExistingAnon:
         resp = client.get("/whoami", cookies={"anon_session_id": bogus})
         assert resp.json()["id"] != bogus
         assert resp.json()["kind"] == "anon"
+
+
+class TestGetOwnerUser:
+    def test_valid_jwt_returns_user_owner(self):
+        import secrets
+        from app.services.auth import register_user, login_user, _users_mem
+        _users_mem.clear()
+        email = f"ownerjwt-{secrets.token_hex(4)}@test.propguard.ai"
+        register_user(email, "password123")
+        token = login_user(email, "password123")["token"]
+
+        client = TestClient(_make_app())
+        resp = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["kind"] == "user"
+        assert body["plan"] == "free"
+        assert "anon_session_id" not in resp.cookies
+
+    def test_invalid_jwt_falls_back_to_anon(self):
+        client = TestClient(_make_app())
+        resp = client.get("/whoami", headers={"Authorization": "Bearer garbage"})
+        assert resp.status_code == 200
+        assert resp.json()["kind"] == "anon"

@@ -51,10 +51,23 @@ def _mint_anon(request: Request, response: Response) -> Owner:
 
 
 def get_owner(request: Request, response: Response) -> Owner:
+    # 1. Authorization: Bearer <jwt>
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        from app.services.auth import verify_token, user_dict_to_owner
+        token = auth_header[7:].strip()
+        user = verify_token(token)
+        if user:
+            return user_dict_to_owner(user)
+        # Invalid/expired JWT — fall through to anon resolution.
+
+    # 2. Existing anon cookie
     sid = request.cookies.get(ANON_COOKIE)
     if sid:
         row = get_anon_session(sid)
         if row and row.get("claimed_by_user_id") is None:
             touch_anon_session(sid)
             return Owner(id=sid, kind="anon", plan="anon", metaapi_account_id=None)
+
+    # 3. Mint a fresh anon session
     return _mint_anon(request, response)
