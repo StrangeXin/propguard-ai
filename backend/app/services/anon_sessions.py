@@ -50,3 +50,15 @@ def touch_anon_session(session_id: str) -> None:
         }).eq("id", session_id).execute()
     except Exception as e:
         logger.error(f"touch_anon_session: {e}")
+
+
+def claim_anon_session(session_id: str, user_id: str) -> None:
+    db = get_db()
+    if not db:
+        return
+    try:
+        db.table("anon_sessions").update({
+            "claimed_by_user_id": user_id,
+        }).eq("id", session_id).execute()
+    except Exception as e:
+        logger.error(f"claim_anon_session: {e}")

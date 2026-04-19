@@ -4,13 +4,16 @@ Requires Supabase dev env (SUPABASE_URL + SUPABASE_KEY in backend/.env).
 """
 
 import os
+import secrets
 import pytest
 
 from app.services.anon_sessions import (
     create_anon_session,
     get_anon_session,
     touch_anon_session,
+    claim_anon_session,
 )
+from app.services.auth import register_user
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("SUPABASE_URL"), reason="requires Supabase dev env"
@@ -40,3 +43,14 @@ class TestAnonSessions:
         touch_anon_session(sid)
         after = get_anon_session(sid)["last_active_at"]
         assert after > before
+
+    def test_claim_sets_user_id(self):
+        # Create a real user first (claim_anon_session has FK constraint)
+        email = f"claim-test-{secrets.token_hex(4)}@test.propguard.ai"
+        user = register_user(email, "password123")
+        user_id = user["id"]
+
+        sid = create_anon_session()
+        claim_anon_session(sid, user_id)
+        row = get_anon_session(sid)
+        assert row["claimed_by_user_id"] == user_id
