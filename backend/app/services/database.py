@@ -105,6 +105,8 @@ def db_save_signal(user_id: str | None, signal: dict, score: dict | None) -> dic
         }
         if user_id:
             row["user_id"] = user_id
+            row["owner_id"] = user_id
+            row["owner_kind"] = "user"
         if score:
             row["score"] = score.get("score")
             row["risk_level"] = score.get("risk_level")
@@ -152,6 +154,8 @@ def db_save_alert(user_id: str | None, alert: dict) -> dict | None:
         }
         if user_id:
             row["user_id"] = user_id
+            row["owner_id"] = user_id
+            row["owner_kind"] = "user"
         result = db.table("alerts").insert(row).execute()
         if result.data:
             return result.data[0]
@@ -208,6 +212,8 @@ def db_save_ai_trade_log(
         }
         if user_id:
             row["user_id"] = user_id
+            row["owner_id"] = user_id
+            row["owner_kind"] = "user"
         result_db = db.table("ai_trade_logs").insert(row).execute()
         if result_db.data:
             return result_db.data[0]
@@ -300,6 +306,8 @@ def db_save_trading_account(user_id: str, account: dict) -> dict | None:
     try:
         row = {
             "user_id": user_id,
+            "owner_id": user_id,
+            "owner_kind": "user",
             "account_id": account.get("account_id"),
             "firm_name": account.get("firm_name"),
             "account_size": account.get("account_size"),

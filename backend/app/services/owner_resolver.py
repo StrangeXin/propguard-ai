@@ -9,6 +9,7 @@ Resolution order:
 
 import hashlib
 import logging
+import uuid
 
 from fastapi import Depends, HTTPException, Request, Response
 
@@ -36,15 +37,16 @@ def _mint_anon(request: Request, response: Response) -> Owner:
     ua = request.headers.get("user-agent")
     sid = create_anon_session(ip_hash=_hash_ip(ip), user_agent=ua)
     if sid is None:
-        import uuid
         sid = str(uuid.uuid4())
         logger.warning("anon session DB insert failed, using ephemeral id")
+    # secure=True requires HTTPS; gate on scheme so local http dev keeps the cookie.
+    is_https = request.url.scheme == "https"
     response.set_cookie(
         key=ANON_COOKIE,
         value=sid,
         max_age=ANON_COOKIE_MAX_AGE,
         httponly=True,
-        secure=True,
+        secure=is_https,
         samesite="lax",
     )
     return Owner(id=sid, kind="anon", plan="anon", metaapi_account_id=None)
