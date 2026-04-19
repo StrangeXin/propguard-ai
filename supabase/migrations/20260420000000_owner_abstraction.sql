@@ -81,9 +81,27 @@ create index if not exists idx_ai_cost_owner_date
 alter table users add column if not exists metaapi_account_id text;
 
 -- 6. Add owner_id + owner_kind to user-owned tables
--- Pattern: delete orphan rows → add nullable columns → backfill → set not null.
--- Polymorphic owner_id has no FK (references either users or anon_sessions).
+-- Pattern: ensure parent tables exist → delete orphan rows → add nullable
+-- columns → backfill → set not null. Polymorphic owner_id has no FK.
 --
+-- Self-healing: some dev environments applied an older init migration that
+-- didn't include ai_trade_logs. We create the table if missing so the
+-- subsequent column additions don't fail on non-existent relations.
+create table if not exists ai_trade_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete cascade,
+  strategy_name text,
+  symbols text,
+  analysis text,
+  actions_planned int default 0,
+  actions_executed int default 0,
+  prompt text,
+  result jsonb,
+  dry_run boolean default true,
+  created_at timestamptz default now()
+);
+create index if not exists idx_ai_trade_logs_user on ai_trade_logs(user_id, created_at desc);
+
 -- Orphan rows (user_id IS NULL) are pre-existing test/webhook data with no
 -- user association; they are unreachable through the app and deleted here so
 -- SET NOT NULL can succeed.
