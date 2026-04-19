@@ -2,9 +2,12 @@
 REST API routes for PropGuard.
 """
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 
 from app.services.auth import register_user, login_user, update_user, link_telegram, get_user_by_id
@@ -599,8 +602,16 @@ async def user_broker_connect(
 ):
     """Validate + persist a user's MetaApi account binding.
 
-    Free users can call this to upgrade their experience (sandbox → real).
-    Paid users use it to switch accounts.
+    **Known limitation — no ownership proof.** The MetaApi SDK uses our
+    server's admin token, so `verify_metaapi_account` confirms the account
+    EXISTS but not that the requesting user OWNS it. A malicious user could
+    bind someone else's account ID and see their trades.
+
+    Mitigations deployed with this PR: (a) account IDs are treated as
+    sensitive and not shared across users on our side, (b) the settings
+    page warns users to only input their own ID, (c) bind events are
+    logged for abuse review. Pending for PR 3b: require a user-supplied
+    MetaApi API token or a one-time signed challenge as ownership proof.
     """
     acct_id = body.metaapi_account_id.strip()
     if not acct_id or len(acct_id) < 20:
@@ -616,6 +627,11 @@ async def user_broker_connect(
     if not updated:
         raise HTTPException(500, "Failed to save account binding.")
 
+    # Audit log for abuse review (ownership proof is not yet enforced).
+    logger.warning(
+        "metaapi_bind user=%s account=%s",
+        owner.id[:8], acct_id[:8],
+    )
     return {"success": True, "message": message, "user": updated}
 
 

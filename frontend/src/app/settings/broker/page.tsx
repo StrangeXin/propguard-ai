@@ -82,6 +82,12 @@ export default function BrokerSettingsPage() {
         </p>
       </div>
 
+      <div className="text-xs text-amber-300 bg-amber-950/40 border border-amber-900 rounded px-3 py-2">
+        ⚠️ <strong>Security:</strong> Only enter an account ID that belongs to you.
+        PropGuard does not verify ownership — if you bind someone else's account,
+        you will see their trades and risk their funds.
+      </div>
+
       {currentBinding && (
         <div className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-900 rounded px-3 py-2">
           Currently bound: <span className="font-mono">{currentBinding}</span>
