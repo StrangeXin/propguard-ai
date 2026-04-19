@@ -125,16 +125,23 @@ async def generate_ai_briefing(
     account: AccountState,
     report: ComplianceReport,
     top_signals: list[ScoredSignal],
+    owner=None,
+    consume_quota: bool = True,
 ) -> dict:
-    """Generate briefing using Claude API."""
+    """Generate briefing using Claude API via AIClient.
+
+    Falls back to template-based briefing if `owner` is missing or Claude
+    call fails. `consume_quota=False` skips quota enforcement inside AIClient
+    when the route layer already consumed via @require_quota.
+    """
     settings = get_settings()
 
-    if not settings.anthropic_api_key:
+    if not settings.anthropic_api_key or owner is None:
         return generate_template_briefing(account, report, top_signals)
 
     try:
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        from app.services.ai_client import AIClient
+        from app.services.quota import QuotaExceeded
 
         dd_check = next((c for c in report.checks if c.rule_type == "max_drawdown"), None)
 
@@ -154,13 +161,16 @@ async def generate_ai_briefing(
             signals_summary=_format_signals_summary(top_signals),
         )
 
-        response = await client.messages.create(
-            model=settings.ai_model,
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        ai = AIClient(owner)
+        try:
+            resp = await ai.briefing(
+                system_prompt="", user_prompt=prompt, max_tokens=500,
+                consume_quota=consume_quota,
+            )
+        except QuotaExceeded:
+            raise  # propagate to route layer for 402
 
-        briefing_text = response.content[0].text.strip()
+        briefing_text = resp["text"].strip()
 
         return {
             "generated_at": datetime.now().isoformat(),
