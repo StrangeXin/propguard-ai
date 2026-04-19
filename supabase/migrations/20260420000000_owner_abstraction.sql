@@ -81,14 +81,22 @@ create index if not exists idx_ai_cost_owner_date
 alter table users add column if not exists metaapi_account_id text;
 
 -- 6. Add owner_id + owner_kind to user-owned tables
--- Pattern: nullable column + backfill from user_id + set not null
--- (No FK because owner_id is polymorphic across users/anon_sessions)
+-- Pattern: delete orphan rows → add nullable columns → backfill → set not null.
+-- Polymorphic owner_id has no FK (references either users or anon_sessions).
+--
+-- Orphan rows (user_id IS NULL) are pre-existing test/webhook data with no
+-- user association; they are unreachable through the app and deleted here so
+-- SET NOT NULL can succeed.
+delete from trading_accounts where user_id is null;
+delete from signals          where user_id is null;
+delete from alerts           where user_id is null;
+delete from ai_trade_logs    where user_id is null;
 
 alter table trading_accounts add column if not exists owner_id uuid;
 alter table trading_accounts add column if not exists owner_kind text
   check (owner_kind in ('user','anon'));
 update trading_accounts set owner_id = user_id, owner_kind = 'user'
-  where owner_id is null and user_id is not null;
+  where owner_id is null;
 alter table trading_accounts alter column owner_id set not null;
 alter table trading_accounts alter column owner_kind set not null;
 create index if not exists idx_trading_accounts_owner
@@ -98,7 +106,7 @@ alter table signals add column if not exists owner_id uuid;
 alter table signals add column if not exists owner_kind text
   check (owner_kind in ('user','anon'));
 update signals set owner_id = user_id, owner_kind = 'user'
-  where owner_id is null and user_id is not null;
+  where owner_id is null;
 alter table signals alter column owner_id set not null;
 alter table signals alter column owner_kind set not null;
 create index if not exists idx_signals_owner
@@ -108,7 +116,7 @@ alter table alerts add column if not exists owner_id uuid;
 alter table alerts add column if not exists owner_kind text
   check (owner_kind in ('user','anon'));
 update alerts set owner_id = user_id, owner_kind = 'user'
-  where owner_id is null and user_id is not null;
+  where owner_id is null;
 alter table alerts alter column owner_id set not null;
 alter table alerts alter column owner_kind set not null;
 create index if not exists idx_alerts_owner
@@ -118,7 +126,7 @@ alter table ai_trade_logs add column if not exists owner_id uuid;
 alter table ai_trade_logs add column if not exists owner_kind text
   check (owner_kind in ('user','anon'));
 update ai_trade_logs set owner_id = user_id, owner_kind = 'user'
-  where owner_id is null and user_id is not null;
+  where owner_id is null;
 alter table ai_trade_logs alter column owner_id set not null;
 alter table ai_trade_logs alter column owner_kind set not null;
 create index if not exists idx_ai_trade_logs_owner
