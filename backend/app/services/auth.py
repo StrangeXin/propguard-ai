@@ -11,6 +11,7 @@ from datetime import datetime
 
 import jwt
 
+from app.models.owner import Owner
 from app.services.database import db_create_user, db_get_user_by_email, db_get_user_by_id, db_update_user
 
 JWT_SECRET = "propguard-jwt-secret-change-in-production"
@@ -128,3 +129,13 @@ def link_telegram(user_id: str, chat_id: str) -> bool:
             u["telegram_chat_id"] = chat_id
             return True
     return False
+
+
+def user_dict_to_owner(user: dict) -> Owner:
+    """Map a user row (from DB or in-memory) to an Owner."""
+    return Owner(
+        id=user["id"],
+        kind="user",
+        plan=user.get("tier") or "free",
+        metaapi_account_id=user.get("metaapi_account_id"),
+    )
