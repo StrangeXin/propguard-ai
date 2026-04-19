@@ -182,6 +182,9 @@ async def generate_ai_briefing(
             "source": "ai",
         }
 
+    except QuotaExceeded:
+        # Must propagate so route layer returns 402, not a silent 200 template.
+        raise
     except Exception as e:
         logger.warning(f"AI briefing failed, falling back to template: {e}")
         return generate_template_briefing(account, report, top_signals)
