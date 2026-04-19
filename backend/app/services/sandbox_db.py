@@ -39,14 +39,17 @@ def sandbox_get_or_create_account(owner_id: str, owner_kind: str,
         return {}
 
 
-def sandbox_update_balance(owner_id: str, new_balance: float) -> None:
+def sandbox_update_balance(owner_id: str, new_balance: float) -> bool:
+    """Returns True on confirmed update, False on any failure."""
     db = get_db()
     if not db:
-        return
+        return False
     try:
-        db.table("sandbox_accounts").update({"balance": new_balance}).eq("owner_id", owner_id).execute()
+        result = db.table("sandbox_accounts").update({"balance": new_balance}).eq("owner_id", owner_id).execute()
+        return bool(result.data)
     except Exception as e:
         logger.error(f"sandbox_update_balance: {e}")
+        return False
 
 
 def sandbox_update_firm(owner_id: str, firm_name: str) -> None:
@@ -133,12 +136,13 @@ def sandbox_insert_closed_trade(owner_id: str, owner_kind: str, *,
                                  entry_price: float, exit_price: float,
                                  pnl: float,
                                  opened_at: datetime,
-                                 closed_at: datetime) -> None:
+                                 closed_at: datetime) -> bool:
+    """Returns True on confirmed insert, False on any failure."""
     db = get_db()
     if not db:
-        return
+        return False
     try:
-        db.table("sandbox_closed_trades").insert({
+        result = db.table("sandbox_closed_trades").insert({
             "owner_id": owner_id,
             "owner_kind": owner_kind,
             "symbol": symbol,
@@ -150,8 +154,10 @@ def sandbox_insert_closed_trade(owner_id: str, owner_kind: str, *,
             "opened_at": opened_at.isoformat(),
             "closed_at": closed_at.isoformat(),
         }).execute()
+        return bool(result.data)
     except Exception as e:
         logger.error(f"sandbox_insert_closed_trade: {e}")
+        return False
 
 
 def sandbox_list_closed_trades(owner_id: str, limit: int = 50) -> list[dict]:

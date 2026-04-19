@@ -58,6 +58,16 @@ def _symbol_spread(symbol: str) -> tuple[float, float]:
     return 0.0001, _SPREADS.get("default_spread_pips", 2)
 
 
+def _is_supported(symbol: str) -> bool:
+    """Only symbols with known PnL contract math are tradable in sandbox v1.
+
+    Non-USD-quote pairs (USDJPY, USDCAD, USDCHF, *JPY crosses) require currency
+    conversion that isn't implemented, so we reject them at order time rather
+    than silently return wrong PnL.
+    """
+    return symbol.upper() in _SPREADS.get("symbols", {})
+
+
 def _apply_spread(mid: float, symbol: str, side: str) -> float:
     """side is 'buy' or 'sell'. Buy fills at ask (mid + half-spread)."""
     pip_size, spread_pips = _symbol_spread(symbol)
@@ -141,6 +151,11 @@ class SandboxBroker:
         self, symbol: str, side: str, volume: float,
         sl: float | None = None, tp: float | None = None,
     ) -> OrderResult:
+        if not _is_supported(symbol):
+            return OrderResult(
+                success=False, order_id=None,
+                message=f"Sandbox does not support {symbol} yet. Supported symbols: EURUSD, GBPUSD, AUDUSD, NZDUSD, XAUUSD, XAGUSD, BTCUSD, ETHUSD, SOLUSD, NAS100, US30, SPX500.",
+            )
         mid = await get_current_price(symbol)
         if mid is None:
             return OrderResult(success=False, order_id=None,
@@ -185,19 +200,26 @@ class SandboxBroker:
         exit_price = _apply_spread(mid, symbol, exit_side)
         pnl = _pnl(side, size_to_close, float(row["entry_price"]), exit_price, symbol)
         new_balance = float(self._account.get("balance", 100000)) + pnl
-        sandbox_update_balance(self._owner.id, new_balance)
-        self._account["balance"] = new_balance
 
         opened_at = row["opened_at"]
         if isinstance(opened_at, str):
             opened_at = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
-        sandbox_insert_closed_trade(
+
+        # Order of writes matters: we take "commit" to mean "position deleted".
+        # If any step before the delete fails, bail before mutating state so the
+        # user can retry. This mirrors the PR 1 lesson on silent DB failures.
+        if not sandbox_insert_closed_trade(
             self._owner.id, self._owner.kind,
             symbol=symbol, side=side, size=size_to_close,
             entry_price=float(row["entry_price"]), exit_price=exit_price,
             pnl=round(pnl, 2),
             opened_at=opened_at, closed_at=datetime.now(timezone.utc),
-        )
+        ):
+            return OrderResult(False, None, "Failed to persist closed trade")
+
+        if not sandbox_update_balance(self._owner.id, new_balance):
+            return OrderResult(False, None, "Failed to update balance")
+        self._account["balance"] = new_balance
 
         remaining = float(row["size"]) - size_to_close
         if remaining <= 1e-9:

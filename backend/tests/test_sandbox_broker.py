@@ -68,11 +68,13 @@ class TestSandboxMarketOrder:
 
     @pytest.mark.asyncio
     async def test_missing_price_returns_error(self, owner):
+        # Use a whitelisted symbol (EURUSD) so we exercise the price-missing
+        # branch, not the unsupported-symbol branch added after code review.
         with patch("app.services.sandbox_broker.get_current_price",
                    new=AsyncMock(return_value=None)):
             b = SandboxBroker(owner)
             result = await b.place_market_order(
-                symbol="WEIRDX", side="buy", volume=0.1,
+                symbol="EURUSD", side="buy", volume=0.1,
             )
             assert not result.success
             assert "price" in result.message.lower()
@@ -163,3 +165,77 @@ class TestSandboxReset:
         assert info.equity == 100000.0
         assert len(await b.positions()) == 0
         assert (await b.history()) == []
+
+
+class TestSandboxSymbolWhitelist:
+    """PR 2a only supports USD-quote symbols. Anything else must be rejected
+    at order time rather than producing wrong PnL (code review C1)."""
+
+    @pytest.mark.asyncio
+    async def test_usdjpy_rejected(self, owner):
+        b = SandboxBroker(owner)
+        result = await b.place_market_order("USDJPY", "buy", 0.1)
+        assert not result.success
+        assert "USDJPY" in result.message
+        assert len(await b.positions()) == 0
+
+    @pytest.mark.asyncio
+    async def test_usdcad_rejected(self, owner):
+        b = SandboxBroker(owner)
+        result = await b.place_market_order("USDCAD", "buy", 0.1)
+        assert not result.success
+        assert "USDCAD" in result.message
+
+    @pytest.mark.asyncio
+    async def test_unknown_symbol_rejected(self, owner):
+        b = SandboxBroker(owner)
+        result = await b.place_market_order("ZZZZZZ", "buy", 0.1)
+        assert not result.success
+
+
+class TestSandboxCloseFailurePropagation:
+    """Regression guard for PR 1 pattern: DB failures must surface to the
+    caller, not be silently swallowed while returning success."""
+
+    @pytest.mark.asyncio
+    async def test_close_fails_when_trade_insert_fails(self, owner):
+        # Set up a real open position first so there's something to close.
+        with patch("app.services.sandbox_broker.get_current_price",
+                   new=AsyncMock(return_value=1.0850)):
+            b = SandboxBroker(owner)
+            r = await b.place_market_order("EURUSD", "buy", 0.1)
+            pid = r.order_id
+
+        # Now simulate the closed-trade insert failing.
+        with patch("app.services.sandbox_broker.get_current_price",
+                   new=AsyncMock(return_value=1.0860)), \
+             patch("app.services.sandbox_broker.sandbox_insert_closed_trade",
+                   return_value=False):
+            b2 = SandboxBroker(owner)
+            r2 = await b2.close_position(pid)
+            assert not r2.success
+            assert "closed trade" in r2.message.lower()
+
+        # Position should still exist; balance unchanged.
+        b3 = SandboxBroker(owner)
+        assert len(await b3.positions()) == 1
+        info = await b3.account_info()
+        # Equity moves with price, but balance (realized) should be 100000 still.
+        assert info.balance == 100000.0
+
+    @pytest.mark.asyncio
+    async def test_close_fails_when_balance_update_fails(self, owner):
+        with patch("app.services.sandbox_broker.get_current_price",
+                   new=AsyncMock(return_value=1.0850)):
+            b = SandboxBroker(owner)
+            r = await b.place_market_order("EURUSD", "buy", 0.1)
+            pid = r.order_id
+
+        with patch("app.services.sandbox_broker.get_current_price",
+                   new=AsyncMock(return_value=1.0860)), \
+             patch("app.services.sandbox_broker.sandbox_update_balance",
+                   return_value=False):
+            b2 = SandboxBroker(owner)
+            r2 = await b2.close_position(pid)
+            assert not r2.success
+            assert "balance" in r2.message.lower()
