@@ -4,10 +4,12 @@ REST API routes for PropGuard.
 
 from datetime import datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Header, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, HTTPException, Depends
 from pydantic import BaseModel
 
-from app.services.auth import register_user, login_user, verify_token, update_user, link_telegram, get_user_by_id
+from app.services.auth import register_user, login_user, update_user, link_telegram, get_user_by_id
+from app.services.owner_resolver import require_user
+from app.models.owner import Owner
 from app.services.payments import create_checkout_session, handle_stripe_webhook
 from app.services.live_trading import (
     mt5_place_order, mt5_close_position, mt5_modify_position,
@@ -493,12 +495,8 @@ async def auth_login(body: LoginInput):
 
 
 @router.get("/api/auth/me")
-async def auth_me(authorization: str = Header(default="")):
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return {"user": user}
+async def auth_me(owner: Owner = Depends(require_user)):
+    return {"user": get_user_by_id(owner.id)}
 
 
 class LinkTelegramInput(BaseModel):
@@ -506,12 +504,8 @@ class LinkTelegramInput(BaseModel):
 
 
 @router.post("/api/auth/link-telegram")
-async def auth_link_telegram(body: LinkTelegramInput, authorization: str = Header(default="")):
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    link_telegram(user["id"], body.chat_id)
+async def auth_link_telegram(body: LinkTelegramInput, owner: Owner = Depends(require_user)):
+    link_telegram(owner.id, body.chat_id)
     return {"linked": True}
 
 
@@ -534,13 +528,8 @@ class ModifyPositionInput(BaseModel):
 
 
 @router.get("/api/trading/account")
-async def trading_account(authorization: str = Header(default="")):
+async def trading_account(owner: Owner = Depends(require_user)):
     """Get MT5 trading account info + positions."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     positions = await mt5_get_positions()
     account_state = await broker.get_account_state("demo-001", "ftmo", 100000)
 
@@ -563,13 +552,8 @@ async def trading_account(authorization: str = Header(default="")):
 
 
 @router.post("/api/trading/order")
-async def trading_place_order(body: PlaceOrderInput, authorization: str = Header(default="")):
+async def trading_place_order(body: PlaceOrderInput, owner: Owner = Depends(require_user)):
     """Place an order on MT5 via MetaApi."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     result = await mt5_place_order(
         symbol=body.symbol,
         side=body.side,
@@ -581,32 +565,20 @@ async def trading_place_order(body: PlaceOrderInput, authorization: str = Header
 
 
 @router.post("/api/trading/position/{position_id}/modify")
-async def trading_modify(position_id: str, body: ModifyPositionInput, authorization: str = Header(default="")):
+async def trading_modify(position_id: str, body: ModifyPositionInput, owner: Owner = Depends(require_user)):
     """Modify SL/TP on MT5."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     return await mt5_modify_position(position_id, body.stop_loss, body.take_profit)
 
 
 @router.post("/api/trading/position/{position_id}/close")
-async def trading_close(position_id: str, authorization: str = Header(default="")):
+async def trading_close(position_id: str, owner: Owner = Depends(require_user)):
     """Close a position on MT5."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     return await mt5_close_position(position_id)
 
 
 @router.post("/api/trading/position/{position_id}/close-partial")
-async def trading_close_partial(position_id: str, volume: float, authorization: str = Header(default="")):
+async def trading_close_partial(position_id: str, volume: float, owner: Owner = Depends(require_user)):
     """Partially close a position."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     return await mt5_close_position_partially(position_id, volume)
 
 
@@ -621,12 +593,8 @@ class PendingOrderInput(BaseModel):
 
 
 @router.post("/api/trading/pending-order")
-async def trading_pending_order(body: PendingOrderInput, authorization: str = Header(default="")):
+async def trading_pending_order(body: PendingOrderInput, owner: Owner = Depends(require_user)):
     """Place a limit or stop order."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     return await mt5_create_pending_order(
         symbol=body.symbol, side=body.side, volume=body.size,
         price=body.price, order_type=body.order_type,
@@ -635,32 +603,20 @@ async def trading_pending_order(body: PendingOrderInput, authorization: str = He
 
 
 @router.get("/api/trading/orders")
-async def trading_orders(authorization: str = Header(default="")):
+async def trading_orders(owner: Owner = Depends(require_user)):
     """Get all pending orders."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     return {"orders": await mt5_get_orders()}
 
 
 @router.post("/api/trading/order/{order_id}/cancel")
-async def trading_cancel_order(order_id: str, authorization: str = Header(default="")):
+async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_user)):
     """Cancel a pending order."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     return await mt5_cancel_order(order_id)
 
 
 @router.get("/api/trading/history")
-async def trading_history(days: int = 30, authorization: str = Header(default="")):
+async def trading_history(days: int = 30, owner: Owner = Depends(require_user)):
     """Get closed trade history."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     trades = await mt5_get_trade_history(days=min(days, 90))
     # Calculate stats
     total = len(trades)
@@ -686,12 +642,8 @@ async def trading_symbol_info(symbol: str):
 
 
 @router.get("/api/trading/account-info")
-async def trading_account_info(authorization: str = Header(default="")):
+async def trading_account_info(owner: Owner = Depends(require_user)):
     """Get full MT5 account information."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     info = await mt5_get_account_info()
     import json as _json
     return _json.loads(_json.dumps(info, default=str)) if info else {"error": "Not connected"}
@@ -724,13 +676,8 @@ INTERVAL_MAP = {
 
 
 @router.post("/api/ai-trade/analyze")
-async def ai_trade_analyze(body: AITradeRequest, authorization: str = Header(default="")):
+async def ai_trade_analyze(body: AITradeRequest, owner: Owner = Depends(require_user)):
     """Run one AI trading cycle: analyze market + return/execute actions."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     result = await ai_analyze_and_trade(
         strategy=body.strategy,
         firm_name=body.firm_name,
@@ -742,7 +689,7 @@ async def ai_trade_analyze(body: AITradeRequest, authorization: str = Header(def
     # Save to database
     from app.services.database import db_save_ai_trade_log
     db_save_ai_trade_log(
-        user_id=user.get("id"),
+        user_id=owner.id,
         strategy_name=body.strategy.get("name", ""),
         symbols=",".join(body.strategy.get("symbols", [])),
         analysis=result.get("analysis", ""),
@@ -762,13 +709,8 @@ class ExecuteActionsInput(BaseModel):
 
 
 @router.post("/api/ai-trade/execute")
-async def ai_trade_execute(body: ExecuteActionsInput, authorization: str = Header(default="")):
+async def ai_trade_execute(body: ExecuteActionsInput, owner: Owner = Depends(require_user)):
     """Execute specific actions directly (from a previous dry run)."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     executed = []
     for action in body.actions:
         action_type = action.get("type")
@@ -801,15 +743,10 @@ async def ai_trade_execute(body: ExecuteActionsInput, authorization: str = Heade
 
 
 @router.post("/api/ai-trade/start")
-async def ai_trade_start(body: AISessionRequest, authorization: str = Header(default="")):
+async def ai_trade_start(body: AISessionRequest, owner: Owner = Depends(require_user)):
     """Start an automated AI trading session."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     interval_seconds = INTERVAL_MAP.get(body.interval, 3600)
-    session_id = f"{user['id'][:8]}-{body.strategy.get('name', 'unnamed')}"
+    session_id = f"{owner.id[:8]}-{body.strategy.get('name', 'unnamed')}"
 
     # Check if already running
     existing = get_session_status(session_id)
@@ -832,36 +769,21 @@ async def ai_trade_start(body: AISessionRequest, authorization: str = Header(def
 
 
 @router.post("/api/ai-trade/stop/{session_id}")
-async def ai_trade_stop(session_id: str, authorization: str = Header(default="")):
+async def ai_trade_stop(session_id: str, owner: Owner = Depends(require_user)):
     """Stop a running AI trading session."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     stopped = stop_trading_session(session_id)
     return {"stopped": stopped, "session_id": session_id}
 
 
 @router.get("/api/ai-trade/sessions")
-async def ai_trade_sessions(authorization: str = Header(default="")):
+async def ai_trade_sessions(owner: Owner = Depends(require_user)):
     """List all AI trading sessions."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     return {"sessions": list_sessions()}
 
 
 @router.get("/api/ai-trade/session/{session_id}")
-async def ai_trade_session_detail(session_id: str, authorization: str = Header(default="")):
+async def ai_trade_session_detail(session_id: str, owner: Owner = Depends(require_user)):
     """Get detailed status of an AI trading session."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     status = get_session_status(session_id)
     if not status:
         return {"error": "Session not found"}
@@ -881,57 +803,36 @@ class StrategyInput(BaseModel):
 
 
 @router.get("/api/strategies")
-async def list_strategies(authorization: str = Header(default="")):
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+async def list_strategies(owner: Owner = Depends(require_user)):
     from app.services.database import db_get_strategies
-    return {"strategies": db_get_strategies(user["id"])}
+    return {"strategies": db_get_strategies(owner.id)}
 
 
 @router.post("/api/strategies")
-async def save_strategy(body: StrategyInput, authorization: str = Header(default="")):
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+async def save_strategy(body: StrategyInput, owner: Owner = Depends(require_user)):
     from app.services.database import db_save_strategy
-    result = db_save_strategy(user["id"], body.model_dump())
+    result = db_save_strategy(owner.id, body.model_dump())
     return {"saved": result is not None, "strategy": result}
 
 
 @router.put("/api/strategies/{strategy_id}")
-async def update_strategy(strategy_id: str, body: StrategyInput, authorization: str = Header(default="")):
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+async def update_strategy(strategy_id: str, body: StrategyInput, owner: Owner = Depends(require_user)):
     from app.services.database import db_update_strategy
     result = db_update_strategy(strategy_id, body.model_dump())
     return {"updated": result is not None, "strategy": result}
 
 
 @router.delete("/api/strategies/{strategy_id}")
-async def delete_strategy(strategy_id: str, authorization: str = Header(default="")):
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+async def delete_strategy(strategy_id: str, owner: Owner = Depends(require_user)):
     from app.services.database import db_delete_strategy
     return {"deleted": db_delete_strategy(strategy_id)}
 
 
 @router.get("/api/ai-trade/logs")
-async def ai_trade_logs(limit: int = 20, authorization: str = Header(default="")):
+async def ai_trade_logs(limit: int = 20, owner: Owner = Depends(require_user)):
     """Get AI trading analysis history."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
     from app.services.database import db_get_ai_trade_logs
-    logs = db_get_ai_trade_logs(user_id=user.get("id"), limit=min(limit, 50))
+    logs = db_get_ai_trade_logs(user_id=owner.id, limit=min(limit, 50))
     return {"logs": logs}
 
 
@@ -939,16 +840,15 @@ async def ai_trade_logs(limit: int = 20, authorization: str = Header(default="")
 
 
 @router.post("/api/payments/checkout")
-async def payment_checkout(tier: str, authorization: str = Header(default="")):
+async def payment_checkout(tier: str, owner: Owner = Depends(require_user)):
     """Create a Stripe Checkout session for upgrading."""
-    token = authorization.replace("Bearer ", "")
-    user = verify_token(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
     if tier not in ("pro", "premium"):
         raise HTTPException(status_code=400, detail="Invalid tier. Use pro or premium.")
 
-    result = await create_checkout_session(user["id"], user["email"], tier)
+    user = get_user_by_id(owner.id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    result = await create_checkout_session(owner.id, user["email"], tier)
     return result
 
 
