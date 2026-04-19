@@ -10,6 +10,7 @@ interface User {
   name: string;
   tier: string;
   telegram_chat_id: string | null;
+  metaapi_account_id: string | null;
 }
 
 interface AuthState {

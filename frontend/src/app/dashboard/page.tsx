@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "../providers";
+import { PlanBanner } from "@/components/dashboard/PlanBanner";
 import { useCompliance } from "@/hooks/useCompliance";
 import { AccountHeader } from "@/components/dashboard/AccountHeader";
 import { RuleCard } from "@/components/dashboard/RuleCard";
@@ -35,14 +35,10 @@ const FIRMS = [
 
 export default function Dashboard() {
   const { t } = useI18n();
-  const { user, loading: authLoading, logout } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-    }
-  }, [authLoading, user, router]);
+  // Dashboard is public — unauthenticated visitors land on sandbox mode
+  // via the anonymous Owner resolved server-side. PlanBanner tells each
+  // visitor what mode they're in and how to upgrade.
+  const { user, logout } = useAuth();
 
   const [firmName, setFirmName] = useState("ftmo");
   const [accountSize, setAccountSize] = useState(100000);
@@ -59,16 +55,17 @@ export default function Dashboard() {
     evaluationType: evaluationType || undefined,
   });
 
-  if (authLoading || !user) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-zinc-700 border-t-zinc-400 rounded-full animate-spin" />
-      </main>
-    );
-  }
+  // authLoading is only true during initial localStorage check; don't block
+  // unauthenticated visitors (they land on sandbox mode).
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+      <PlanBanner
+        userKind={user ? "user" : "anon"}
+        plan={user?.tier ?? "anon"}
+        metaapiAccountId={user?.metaapi_account_id ?? null}
+      />
+
       {/* Top bar */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="flex gap-3">
@@ -119,13 +116,17 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           <LocaleSwitcher />
           <ConnectionStatus connected={connected} reconnecting={reconnecting} error={error} />
-          {user && (
+          {user ? (
             <div className="flex items-center gap-2 text-xs">
               <span className="text-zinc-400">{user.name}</span>
               <button onClick={logout} className="text-zinc-600 hover:text-white transition-colors">
                 Logout
               </button>
             </div>
+          ) : (
+            <a href="/login" className="text-xs text-zinc-400 hover:text-white transition-colors">
+              Sign in
+            </a>
           )}
         </div>
       </div>
