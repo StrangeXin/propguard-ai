@@ -92,20 +92,23 @@ def check_and_consume(owner: Owner, action: str) -> bool:
         return True
 
     try:
-        existing = db.table("owner_quota_usage").select("count").eq(
-            "owner_id", owner.id).eq("action", action).eq("date", today).limit(1).execute()
-        current = existing.data[0]["count"] if existing.data else 0
-        if current >= daily_limit:
-            raise QuotaExceeded(action=action, limit=daily_limit, used=current, plan=owner.plan)
-
-        new_count = current + 1
-        db.table("owner_quota_usage").upsert({
-            "owner_id": owner.id,
-            "owner_kind": owner.kind,
-            "action": action,
-            "date": today,
-            "count": new_count,
-        }, on_conflict="owner_id,action,date").execute()
+        # Atomic insert-or-conditional-increment via Postgres RPC.
+        # Returns the new count, or NULL if the limit was already hit.
+        result = db.rpc("quota_consume", {
+            "p_owner_id": owner.id,
+            "p_owner_kind": owner.kind,
+            "p_action": action,
+            "p_date": today,
+            "p_limit": daily_limit,
+        }).execute()
+        new_count = result.data
+        if new_count is None:
+            # Re-read the current count for the error payload so the user
+            # sees "used: 20 / limit: 20" rather than zeros.
+            existing = db.table("owner_quota_usage").select("count").eq(
+                "owner_id", owner.id).eq("action", action).eq("date", today).limit(1).execute()
+            used = existing.data[0]["count"] if existing.data else daily_limit
+            raise QuotaExceeded(action=action, limit=daily_limit, used=used, plan=owner.plan)
         return True
     except QuotaExceeded:
         raise
