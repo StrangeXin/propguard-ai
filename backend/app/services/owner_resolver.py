@@ -51,5 +51,10 @@ def _mint_anon(request: Request, response: Response) -> Owner:
 
 
 def get_owner(request: Request, response: Response) -> Owner:
-    # Step 3 only for now; JWT + existing-cookie cases land in later tasks.
+    sid = request.cookies.get(ANON_COOKIE)
+    if sid:
+        row = get_anon_session(sid)
+        if row and row.get("claimed_by_user_id") is None:
+            touch_anon_session(sid)
+            return Owner(id=sid, kind="anon", plan="anon", metaapi_account_id=None)
     return _mint_anon(request, response)
