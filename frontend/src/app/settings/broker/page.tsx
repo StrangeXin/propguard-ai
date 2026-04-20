@@ -1,29 +1,41 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { api } from "@/lib/api";
 
-// Bind a MetaApi account ID so trading routes route through MetaApiBroker
-// (real funds) instead of SandboxBroker (per-user simulation). Unbinding
-// reverts to sandbox mode.
+// Bind a MetaApi account ID so trading routes through the user's own
+// MetaApi account instead of the shared public demo.
 export default function BrokerSettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const { openGate } = useLoginGate();
   const currentBinding = user?.metaapi_account_id ?? "";
   const [accountId, setAccountId] = useState(currentBinding);
   const [userToken, setUserToken] = useState("");
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [message, setMessage] = useState("");
 
+  useEffect(() => {
+    if (!user) openGate("Log in to connect your MetaApi account");
+  }, [user, openGate]);
+
   if (!user) {
     return (
       <div className="max-w-xl mx-auto p-6 space-y-3">
         <h1 className="text-xl font-semibold">Broker settings</h1>
         <p className="text-sm text-neutral-400">
-          Please <Link href="/login" className="underline hover:text-white">log in</Link> to bind a MetaApi account.
+          Please{" "}
+          <button
+            onClick={() => openGate("Log in to connect your MetaApi account")}
+            className="underline hover:text-white"
+          >
+            log in
+          </button>{" "}
+          to bind a MetaApi account.
         </p>
       </div>
     );

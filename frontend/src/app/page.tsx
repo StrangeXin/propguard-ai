@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "./providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { LocaleSwitcher } from "@/components/dashboard/LocaleSwitcher";
 
 const icons = {
@@ -79,6 +80,7 @@ const texts = {
 export default function HomePage() {
   const { locale } = useI18n();
   const { user } = useAuth();
+  const { openGate } = useLoginGate();
   const t = texts[locale] || texts.en;
   const f = features[locale] || features.en;
 
@@ -96,12 +98,12 @@ export default function HomePage() {
               </Link>
             ) : (
               <>
-                <Link href="/login" className="text-sm text-zinc-400 hover:text-white transition-colors">
+                <button onClick={() => openGate(t.login)} className="text-sm text-zinc-400 hover:text-white transition-colors">
                   {t.login}
-                </Link>
-                <Link href="/login" className="px-4 py-2 bg-white text-black text-sm font-medium rounded-lg hover:bg-zinc-200 transition-colors">
+                </button>
+                <button onClick={() => openGate(t.login)} className="px-4 py-2 bg-white text-black text-sm font-medium rounded-lg hover:bg-zinc-200 transition-colors">
                   {t.cta}
-                </Link>
+                </button>
               </>
             )}
           </div>
@@ -205,6 +207,7 @@ export default function HomePage() {
 }
 
 function PricingCard({ tier, price, features, highlight = false }: { tier: string; price: string; features: string[]; highlight?: boolean }) {
+  const { openGate } = useLoginGate();
   return (
     <div className={`rounded-xl p-6 space-y-4 ${highlight ? "bg-zinc-800 ring-1 ring-green-800" : "bg-zinc-900/50 border border-zinc-800/50"}`}>
       <div>
@@ -219,9 +222,9 @@ function PricingCard({ tier, price, features, highlight = false }: { tier: strin
           </li>
         ))}
       </ul>
-      <Link href="/login" className={`block text-center py-2 rounded-lg text-sm font-medium transition-colors ${highlight ? "bg-white text-black hover:bg-zinc-200" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}>
+      <button onClick={() => openGate("Get Started")} className={`block w-full text-center py-2 rounded-lg text-sm font-medium transition-colors ${highlight ? "bg-white text-black hover:bg-zinc-200" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}>
         Get Started
-      </Link>
+      </button>
     </div>
   );
 }
