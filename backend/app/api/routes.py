@@ -157,15 +157,26 @@ def _shared_account_configured() -> bool:
 def _labels_for_positions(owner: Owner, position_ids: list[str]) -> dict:
     """Return {position_id: user_label} for the shared-account read path.
 
-    Accepts a list of position id strings directly.
+    Accepts a list of position id strings directly. Attribution rows are keyed
+    primarily on broker_order_id and only get a broker_position_id backfilled
+    later from history reads, so for currently-open positions we have to query
+    BOTH columns. With many MetaApi brokers market-order position_id ==
+    order_id, so the broker_order_id lookup alone covers the common case.
     Returns empty dict for bound users — they're on their own MetaApi account
     and attribution does not apply. Frontend hides the By column when the map
     is empty AND all positions lack user_label.
     """
     if owner.metaapi_account_id is not None:
         return {}
-    from app.services.attribution import fetch_labels_by_positions
-    return fetch_labels_by_positions([pid for pid in position_ids if pid])
+    from app.services.attribution import fetch_labels_by_positions, fetch_labels_by_orders
+    ids = [pid for pid in position_ids if pid]
+    if not ids:
+        return {}
+    by_position = fetch_labels_by_positions(ids)
+    by_order = fetch_labels_by_orders(ids)
+    # position-id match wins when both present (more specific); order-id fills
+    # the common market-order-where-position_id==order_id case.
+    return {**by_order, **by_position}
 
 
 def _labels_for_orders(owner: Owner, order_ids: list) -> dict:
