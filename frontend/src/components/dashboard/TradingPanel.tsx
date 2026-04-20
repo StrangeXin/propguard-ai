@@ -173,24 +173,35 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [partialPos, setPartialPos] = useState<string | null>(null);
   const [partialVol, setPartialVol] = useState("");
 
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) authHeaders.Authorization = `Bearer ${token}`;
+  const headers = authHeaders;
 
-  // Fetch account + positions
+  const readHeaders: Record<string, string> = {};
+  if (token) readHeaders.Authorization = `Bearer ${token}`;
+
+  // Fetch account + positions (anon allowed — routes to shared public account)
   const fetchAccount = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/account`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/account`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) setAccount(await res.json());
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Fetch account info (margin, leverage)
+  // Fetch account info (margin, leverage) — anon allowed
   const fetchAccountInfo = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/account-info`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/account-info`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) setAccountInfo(await res.json());
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Fetch symbol price
@@ -204,29 +215,35 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     } catch { /* silent */ }
   }, [symbol]);
 
-  // Fetch pending orders
+  // Fetch pending orders (anon allowed)
   const fetchOrders = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/orders`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/orders`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setPendingOrders(data.orders || []);
       }
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Fetch trade history
+  // Fetch trade history (anon allowed)
   const fetchHistory = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/history?days=30`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/history?days=30`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setTradeHistory(data.trades || []);
         setHistoryStats(data.stats || { total_trades: 0, win_rate: 0, total_pnl: 0 });
       }
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {

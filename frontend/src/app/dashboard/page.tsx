@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "../providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { PlanBanner } from "@/components/dashboard/PlanBanner";
 import { ConversionToasts } from "@/components/dashboard/ConversionToasts";
 import { useCompliance } from "@/hooks/useCompliance";
@@ -40,6 +41,7 @@ export default function Dashboard() {
   // via the anonymous Owner resolved server-side. PlanBanner tells each
   // visitor what mode they're in and how to upgrade.
   const { user, logout } = useAuth();
+  const { openGate } = useLoginGate();
 
   const [firmName, setFirmName] = useState("ftmo");
   const [accountSize, setAccountSize] = useState(100000);
@@ -131,9 +133,12 @@ export default function Dashboard() {
               </button>
             </div>
           ) : (
-            <a href="/login" className="text-xs text-zinc-400 hover:text-white transition-colors">
-              Sign in
-            </a>
+            <button
+              onClick={() => openGate(t("auth.login_required_title"))}
+              className="text-xs text-zinc-400 hover:text-white transition-colors"
+            >
+              {t("auth.login")}
+            </button>
           )}
         </div>
       </div>
