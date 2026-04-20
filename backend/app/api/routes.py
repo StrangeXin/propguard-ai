@@ -108,6 +108,44 @@ def _result_to_dict(r: OrderResult) -> dict:
     return {"success": r.success, "order_id": r.order_id, "error": r.message}
 
 
+def _record_order_attribution(
+    owner: Owner, result, symbol: str, side: str, volume: float,
+) -> None:
+    """Write an attribution row when a logged-in user places on the shared account.
+
+    Skips when: order was rejected, owner is on their own bound account, or DB
+    write fails (logged). Never raises — the order is already live at broker.
+    """
+    from app.config import get_settings
+    from app.services.attribution import record_attribution, freeze_user_label
+    from app.services.auth import get_user_by_id
+
+    if not getattr(result, "success", False):
+        return
+    order_id = getattr(result, "order_id", None)
+    if not order_id:
+        return
+    if owner.metaapi_account_id is not None:
+        return  # user on their own account — no shared-account attribution
+    settings = get_settings()
+    if not settings.metaapi_account_id:
+        return  # local dev without MetaApi — skip
+    user = get_user_by_id(owner.id)
+    if not user:
+        logger.warning("attribution: user %s not found", owner.id)
+        return
+    record_attribution(
+        broker_order_id=str(order_id),
+        broker_position_id=None,  # market order — position id backfilled in history reads
+        account_id=settings.metaapi_account_id,
+        user_id=owner.id,
+        user_label=freeze_user_label(user),
+        symbol=symbol,
+        side=side,
+        volume=volume,
+    )
+
+
 @router.get("/api/firms")
 async def get_firms():
     """List all available prop firm rule sets."""
@@ -694,6 +732,7 @@ async def trading_place_order(body: PlaceOrderInput, owner: Owner = Depends(requ
         sl=body.stop_loss,
         tp=body.take_profit,
     )
+    _record_order_attribution(owner, result, body.symbol, body.side, body.size)
     return _result_to_dict(result)
 
 
