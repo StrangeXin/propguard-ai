@@ -16,15 +16,21 @@ def freeze_user_label(user: dict) -> str:
     """Return a display label frozen at write time.
 
     Prefers `users.name`; falls back to a masked email like `m***n@host.com`
-    when name is absent. Truncates to 32 chars.
+    when name is absent. Returns "anonymous" when both are missing.
+    Truncates to 32 chars.
     """
     name = (user.get("name") or "").strip()
     if name:
         return name[:32]
-    email = user["email"]
+    email = (user.get("email") or "").strip()
+    if not email:
+        return "anonymous"
     local, _, domain = email.partition("@")
+    if not domain:
+        # email without '@' — just mask the whole string as if it were local-part
+        return (local[0] + "*") if local else "anonymous"
     if len(local) <= 2:
-        masked = local[0] + "*"
+        masked = (local[0] + "*") if local else "*"
     else:
         masked = local[0] + "*" * (len(local) - 2) + local[-1]
     return f"{masked}@{domain}"

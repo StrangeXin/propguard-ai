@@ -36,6 +36,18 @@ class TestFreezeUserLabel:
     def test_masks_name_none(self):
         assert freeze_user_label({"name": None, "email": "xy@host.com"}) == "x*@host.com"
 
+    def test_returns_anonymous_when_both_name_and_email_missing(self):
+        assert freeze_user_label({"name": "", "email": ""}) == "anonymous"
+
+    def test_returns_anonymous_when_keys_absent(self):
+        assert freeze_user_label({}) == "anonymous"
+
+    def test_handles_email_without_at_sign(self):
+        # Defensive: malformed email shouldn't crash
+        result = freeze_user_label({"name": "", "email": "noatsignhere"})
+        assert result  # just check it doesn't raise
+        assert "*" in result
+
 
 class TestRecordAttribution:
     def test_happy_path_inserts_row(self):

@@ -6,7 +6,7 @@ create table if not exists order_attributions (
   broker_order_id text primary key,
   broker_position_id text,
   account_id text not null,
-  user_id uuid not null references users(id) on delete set null,
+  user_id uuid references users(id) on delete set null,
   user_label text not null,
   symbol text,
   side text check (side in ('buy','sell')),
