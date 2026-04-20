@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n/context";
 
 export function PositionsTable({ positions }: { positions: Position[] }) {
   const { t } = useI18n();
+  const showByColumn = positions.some((p) => p.user_label != null);
 
   if (positions.length === 0) {
     return (
@@ -28,6 +29,7 @@ export function PositionsTable({ positions }: { positions: Position[] }) {
             <th className="px-4 py-2 text-right">{t("positions.entry")}</th>
             <th className="px-4 py-2 text-right">{t("positions.current")}</th>
             <th className="px-4 py-2 text-right">{t("positions.pnl")}</th>
+            {showByColumn && <th className="px-4 py-2 text-left">{t("positions.by")}</th>}
           </tr>
         </thead>
         <tbody>
@@ -49,6 +51,11 @@ export function PositionsTable({ positions }: { positions: Position[] }) {
               <td className={`px-4 py-2 text-right font-mono font-bold ${pos.unrealized_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                 {pos.unrealized_pnl >= 0 ? "+" : ""}${pos.unrealized_pnl.toFixed(2)}
               </td>
+              {showByColumn && (
+                <td className="px-4 py-2 text-xs text-zinc-400 truncate max-w-[120px]">
+                  {pos.user_label ?? "—"}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

@@ -1,6 +1,7 @@
 export type AlertLevel = "safe" | "warning" | "critical" | "danger" | "breached";
 
 export interface Position {
+  id?: string;
   symbol: string;
   side: string;
   size: number;
@@ -8,6 +9,7 @@ export interface Position {
   current_price: number;
   unrealized_pnl: number;
   opened_at: string;
+  user_label?: string | null;
 }
 
 export interface AccountState {

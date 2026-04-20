@@ -1,0 +1,26 @@
+PropGuard AI — Shared Public Account backend smoke (2026-04-20)
+Branch: feat/shared-public-account
+
+Ran against local uvicorn on :8001 with .env (MetaApi credentials present
+but no actual MetaApi socket open in the local run — "source":"metaapi_mt5"
+confirms routing to the shared MetaApi demo path; empty positions are
+expected without a live broker socket).
+
+Authorization matrix verification:
+
+  GET  /api/health                         → 200 ok
+  GET  /api/trading/account  (anon)        → 200  (source=metaapi_mt5, empty positions)
+  POST /api/trading/order    (anon)        → 401  ← require_user
+  GET  /api/accounts/.../briefing (anon)   → 401  ← require_user (newly added)
+  POST /api/sandbox/reset    (anon)        → 401  ← require_user (before the always-403)
+
+Frontend dev build:
+  GET  /dashboard                          → 200 (19713 bytes, contains "PropGuard")
+
+Full pytest: 124 passed, 63 skipped, 0 failures.
+Frontend tsc --noEmit: clean.
+
+All spec-gated matrix entries verified at HTTP level. Interactive flows
+(LoginModal appearance on click, By column rendering, i18n strings) require
+a real browser render and are out of scope for this local smoke — deferred
+to staging smoke post-deploy.

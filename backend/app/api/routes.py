@@ -2,6 +2,7 @@
 REST API routes for PropGuard.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -50,6 +51,8 @@ from app.services.tier import (
 )
 from app.services.position_calculator import calculate_position
 from app.websocket.manager import ws_manager
+from app.config import get_settings
+from app.services.attribution import record_attribution, freeze_user_label
 
 router = APIRouter()
 broker = BrokerAPIClient()
@@ -62,7 +65,7 @@ broker = BrokerAPIClient()
 # for the UI.
 
 
-def _position_to_dict(p: PositionDTO) -> dict:
+def _position_to_dict(p: PositionDTO, user_label: str | None = None) -> dict:
     return {
         "id": p.id,
         "symbol": p.symbol,
@@ -73,10 +76,11 @@ def _position_to_dict(p: PositionDTO) -> dict:
         "profit": p.unrealized_pnl,
         "stop_loss": p.stop_loss,
         "take_profit": p.take_profit,
+        "user_label": user_label,
     }
 
 
-def _order_to_dict(o: OrderDTO) -> dict:
+def _order_to_dict(o: OrderDTO, user_label: str | None = None) -> dict:
     return {
         "id": o.id,
         "symbol": o.symbol,
@@ -86,10 +90,11 @@ def _order_to_dict(o: OrderDTO) -> dict:
         "price": o.price,
         "stop_loss": o.stop_loss,
         "take_profit": o.take_profit,
+        "user_label": user_label,
     }
 
 
-def _trade_to_dict(t: ClosedTrade) -> dict:
+def _trade_to_dict(t: ClosedTrade, user_label: str | None = None) -> dict:
     side = "buy" if t.side == "long" else "sell"
     return {
         "id": t.id,
@@ -101,11 +106,73 @@ def _trade_to_dict(t: ClosedTrade) -> dict:
         "entry_price": t.entry_price,
         "exit_price": t.exit_price,
         "profit": t.pnl,
+        "user_label": user_label,
     }
 
 
-def _result_to_dict(r: OrderResult) -> dict:
+def _result_to_dict(r) -> dict:
+    if isinstance(r, dict):
+        return {"success": r.get("success"), "order_id": r.get("order_id"), "error": r.get("message") or r.get("error")}
     return {"success": r.success, "order_id": r.order_id, "error": r.message}
+
+
+def _record_order_attribution(
+    owner: Owner, result, symbol: str, side: str, volume: float,
+) -> None:
+    """Write an attribution row when a logged-in user places on the shared account.
+
+    Skips when: order was rejected, owner is on their own bound account, or DB
+    write fails (logged). Never raises — the order is already live at broker.
+    """
+    if not getattr(result, "success", False):
+        return
+    order_id = getattr(result, "order_id", None)
+    if not order_id:
+        return
+    if owner.metaapi_account_id is not None:
+        return  # user on their own account — no shared-account attribution
+    settings = get_settings()
+    if not settings.metaapi_account_id:
+        return  # local dev without MetaApi — skip
+    user = get_user_by_id(owner.id)
+    if not user:
+        logger.warning("attribution: user %s not found", owner.id)
+        return
+    record_attribution(
+        broker_order_id=str(order_id),
+        broker_position_id=None,  # market order — position id backfilled in history reads
+        account_id=settings.metaapi_account_id,
+        user_id=owner.id,
+        user_label=freeze_user_label(user),
+        symbol=symbol,
+        side=side,
+        volume=volume,
+    )
+
+
+def _shared_account_configured() -> bool:
+    return bool(get_settings().metaapi_account_id)
+
+
+def _labels_for_positions(owner: Owner, position_ids: list[str]) -> dict:
+    """Return {position_id: user_label} for the shared-account read path.
+
+    Accepts a list of position id strings directly.
+    Returns empty dict for bound users — they're on their own MetaApi account
+    and attribution does not apply. Frontend hides the By column when the map
+    is empty AND all positions lack user_label.
+    """
+    if owner.metaapi_account_id is not None:
+        return {}
+    from app.services.attribution import fetch_labels_by_positions
+    return fetch_labels_by_positions([pid for pid in position_ids if pid])
+
+
+def _labels_for_orders(owner: Owner, order_ids: list) -> dict:
+    if owner.metaapi_account_id is not None:
+        return {}
+    from app.services.attribution import fetch_labels_by_orders
+    return fetch_labels_by_orders([oid for oid in order_ids if oid])
 
 
 @router.get("/api/firms")
@@ -327,6 +394,7 @@ async def get_signal_source(source_id: str):
 @router.get("/api/accounts/{account_id}/briefing")
 async def get_briefing(
     account_id: str, firm_name: str, account_size: int,
+    _user: Owner = Depends(require_user),  # briefing requires login
     owner: Owner = Depends(require_quota("briefing")),
 ):
     """Generate a pre-market AI briefing for an account."""
@@ -660,13 +728,14 @@ class ModifyPositionInput(BaseModel):
 
 
 @router.get("/api/trading/account")
-async def trading_account(owner: Owner = Depends(require_user)):
+async def trading_account(owner: Owner = Depends(get_owner)):
     """Get trading account info + positions."""
     broker_impl = get_broker(owner)
     info = await broker_impl.account_info()
     positions = await broker_impl.positions()
-    initial = 100000.0  # initial balance baseline; sandbox starts at 100k, MetaApi ignores
+    initial = 100000.0
     pnl = info.equity - initial
+    labels = _labels_for_positions(owner, [p.id for p in positions])
     return {
         "balance": info.balance,
         "equity": info.equity,
@@ -677,9 +746,9 @@ async def trading_account(owner: Owner = Depends(require_user)):
         "total_trades": 0,
         "winning_trades": 0,
         "win_rate": 0,
-        "positions": [_position_to_dict(p) for p in positions],
+        "positions": [_position_to_dict(p, labels.get(p.id)) for p in positions],
         "recent_trades": [],
-        "source": "metaapi_mt5_demo" if owner.metaapi_account_id else "sandbox",
+        "source": "metaapi_mt5" if owner.metaapi_account_id or _shared_account_configured() else "sandbox",
     }
 
 
@@ -694,6 +763,7 @@ async def trading_place_order(body: PlaceOrderInput, owner: Owner = Depends(requ
         sl=body.stop_loss,
         tp=body.take_profit,
     )
+    _record_order_attribution(owner, result, body.symbol, body.side, body.size)
     return _result_to_dict(result)
 
 
@@ -746,15 +816,17 @@ async def trading_pending_order(body: PendingOrderInput, owner: Owner = Depends(
         sl=body.stop_loss,
         tp=body.take_profit,
     )
+    _record_order_attribution(owner, result, body.symbol, body.side, body.size)
     return _result_to_dict(result)
 
 
 @router.get("/api/trading/orders")
-async def trading_orders(owner: Owner = Depends(require_user)):
+async def trading_orders(owner: Owner = Depends(get_owner)):
     """Get all pending orders."""
     broker_impl = get_broker(owner)
     orders = await broker_impl.pending_orders()
-    return {"orders": [_order_to_dict(o) for o in orders]}
+    labels = _labels_for_orders(owner, [o.id for o in orders])
+    return {"orders": [_order_to_dict(o, labels.get(o.id)) for o in orders]}
 
 
 @router.post("/api/trading/order/{order_id}/cancel")
@@ -765,11 +837,41 @@ async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_use
 
 
 @router.get("/api/trading/history")
-async def trading_history(days: int = 30, owner: Owner = Depends(require_user)):
+async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
     """Get closed trade history."""
     broker_impl = get_broker(owner)
     trades_typed = await broker_impl.history(limit=100)
-    trades = [_trade_to_dict(t) for t in trades_typed]
+    # Collect order_ids and position_ids separately — attribution rows are
+    # keyed by these, NOT by ClosedTrade.id (which is the deal_id).
+    order_ids = [t.order_id for t in trades_typed if t.order_id]
+    position_ids = [t.position_id for t in trades_typed if t.position_id]
+    labels_by_order = _labels_for_orders(owner, order_ids)
+    labels_by_position = _labels_for_positions(owner, position_ids)
+
+    def _label_for(t):
+        if t.order_id and t.order_id in labels_by_order:
+            return labels_by_order[t.order_id]
+        if t.position_id and t.position_id in labels_by_position:
+            return labels_by_position[t.position_id]
+        return None
+
+    trades = [_trade_to_dict(t, _label_for(t)) for t in trades_typed]
+
+    # Lazy backfill: attribution rows with known order_id but missing
+    # broker_position_id — set it now if we learned it from this deal.
+    if owner.metaapi_account_id is None and order_ids:
+        from app.services.attribution import fetch_attributions_by_orders, backfill_position_id
+        attr_rows = fetch_attributions_by_orders(order_ids)
+        # Build order_id → position_id from the trades we just got.
+        order_to_pos = {t.order_id: t.position_id for t in trades_typed if t.order_id and t.position_id}
+        for row in attr_rows:
+            order_id = row.get("broker_order_id")
+            if row.get("broker_position_id"):
+                continue  # already backfilled
+            pos_id = order_to_pos.get(order_id)
+            if pos_id:
+                asyncio.create_task(asyncio.to_thread(backfill_position_id, order_id, pos_id))
+
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)
     total_pnl = sum(t.get("profit", 0) for t in trades)
@@ -793,7 +895,7 @@ async def trading_symbol_info(symbol: str):
 
 
 @router.get("/api/trading/account-info")
-async def trading_account_info(owner: Owner = Depends(require_user)):
+async def trading_account_info(owner: Owner = Depends(get_owner)):
     """Get full account information."""
     broker_impl = get_broker(owner)
     info = await broker_impl.account_info()
@@ -809,16 +911,13 @@ async def trading_account_info(owner: Owner = Depends(require_user)):
 
 @router.post("/api/sandbox/reset")
 async def sandbox_reset(owner: Owner = Depends(require_user)):
-    """Reset this owner's sandbox to a clean $100,000 state.
-
-    Returns 400 if the owner is bound to a real MetaApi account (nothing
-    to reset). PR 2b will add quota enforcement to prevent abuse.
-    """
-    if owner.metaapi_account_id:
-        raise HTTPException(400, detail="Real accounts cannot be reset")
-    broker_impl = get_broker(owner)
-    await broker_impl.reset()
-    return {"success": True}
+    """Account reset is disabled — both shared and bound accounts are real
+    MetaApi demos. Kept as 403 rather than 410 so the frontend can render a
+    tooltip via its existing error handler. See design doc §Broker routing."""
+    raise HTTPException(
+        status_code=403,
+        detail="Account reset is not supported on real broker accounts",
+    )
 
 
 ## ── AI Trading ──────────────────────────────────────────────────

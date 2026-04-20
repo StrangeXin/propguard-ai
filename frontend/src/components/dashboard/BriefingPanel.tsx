@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/i18n/context";
+import { useAuth } from "@/app/providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -31,15 +33,34 @@ export function BriefingPanel({
   accountSize: number;
 }) {
   const { t } = useI18n();
+  const { token } = useAuth();
+  const { openGate } = useLoginGate();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
+
+  // Skip fetch entirely when not logged in
+  useEffect(() => {
+    if (!token) {
+      setAuthRequired(true);
+    }
+  }, [token]);
 
   const generateBriefing = useCallback(async () => {
+    if (!token) {
+      setAuthRequired(true);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(
-        `${API_BASE}/api/accounts/${accountId}/briefing?firm_name=${firmName}&account_size=${accountSize}`
+        `${API_BASE}/api/accounts/${accountId}/briefing?firm_name=${firmName}&account_size=${accountSize}`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
+      if (res.status === 401) {
+        setAuthRequired(true);
+        return;
+      }
       const data = await res.json();
       setBriefing(data);
     } catch {
@@ -47,7 +68,7 @@ export function BriefingPanel({
     } finally {
       setLoading(false);
     }
-  }, [accountId, firmName, accountSize]);
+  }, [accountId, firmName, accountSize, token]);
 
   const statusColor: Record<string, string> = {
     safe: "text-green-400",
@@ -56,6 +77,20 @@ export function BriefingPanel({
     danger: "text-red-400",
     breached: "text-red-300",
   };
+
+  if (authRequired) {
+    return (
+      <div className="bg-zinc-900 rounded-lg p-6 text-center">
+        <p className="text-zinc-400 mb-3">{t("auth.login_to_view_briefing")}</p>
+        <button
+          className="px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-500 text-white"
+          onClick={() => openGate(t("auth.login_to_view_briefing"))}
+        >
+          {t("auth.login")}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

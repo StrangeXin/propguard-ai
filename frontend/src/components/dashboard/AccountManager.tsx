@@ -16,6 +16,17 @@ interface RegisteredAccount {
   created_at: string;
 }
 
+type ClosedDeal = {
+  id: string;
+  symbol: string;
+  side: string;
+  volume: number;
+  entry_price: number;
+  exit_price: number;
+  profit: number;
+  user_label?: string | null;
+};
+
 const brokerLabels: Record<string, string> = {
   metaapi: "MT5 (MetaApi)",
   okx: "OKX",

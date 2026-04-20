@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "@/app/providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -37,6 +38,7 @@ interface TradeRecord {
   price: number;
   profit: number;
   time: string;
+  user_label?: string | null;
 }
 
 interface AccountData {
@@ -130,8 +132,9 @@ const texts: Record<string, Record<string, string>> = {
 };
 
 export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
-  const { locale } = useI18n();
+  const { locale, t: ti18n } = useI18n();
   const { token } = useAuth();
+  const { openGate } = useLoginGate();
   const t = texts[locale] || texts.en;
 
   const [tab, setTab] = useState<"order" | "positions" | "orders" | "history">("order");
@@ -248,8 +251,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   // Place order
   const submitOrder = async (side: string) => {
     if (!token) {
-      setMsg("Please sign in to place trades.");
-      window.location.href = "/login?next=/dashboard";
+      openGate(ti18n("auth.login_to_place_order"));
       return;
     }
     setLoading(true);
@@ -287,12 +289,14 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Close position
   const closePos = async (posId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
     fetchAccount();
   };
 
   // Partial close
   const partialClose = async (posId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     if (!partialVol) return;
     await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
     setPartialPos(null);
@@ -302,6 +306,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Modify SL/TP
   const modifyPos = async (posId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
       method: "POST", headers,
       body: JSON.stringify({
@@ -315,6 +320,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Cancel pending order
   const cancelOrder = async (orderId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
     fetchOrders();
   };
@@ -503,18 +509,24 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           {tradeHistory.length === 0 && (
             <div className="bg-zinc-900 rounded-lg p-6 text-center text-zinc-600 text-sm">{t.noHistory}</div>
           )}
-          {tradeHistory.slice(0, 20).map((trade, i) => (
-            <div key={i} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className={trade.side === "buy" ? "text-green-500" : "text-red-500"}>{trade.side.toUpperCase()}</span>
-                <span className="text-zinc-300">{trade.symbol}</span>
-                <span className="text-zinc-600">{trade.volume} @ {trade.price}</span>
+          {(() => {
+            const showByColumn = tradeHistory.some((d) => d.user_label != null);
+            return tradeHistory.slice(0, 20).map((trade, i) => (
+              <div key={i} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={trade.side === "buy" ? "text-green-500" : "text-red-500"}>{trade.side.toUpperCase()}</span>
+                  <span className="text-zinc-300">{trade.symbol}</span>
+                  <span className="text-zinc-600">{trade.volume} @ {trade.price}</span>
+                  {showByColumn && (
+                    <span className="text-zinc-500 truncate max-w-[80px]">{trade.user_label ?? "—"}</span>
+                  )}
+                </div>
+                <span className={`font-mono font-bold ${pnlColor(trade.profit)}`}>
+                  {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
+                </span>
               </div>
-              <span className={`font-mono font-bold ${pnlColor(trade.profit)}`}>
-                {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
-              </span>
-            </div>
-          ))}
+            ));
+          })()}
         </div>
       )}
     </div>
