@@ -785,6 +785,7 @@ async def trading_pending_order(body: PendingOrderInput, owner: Owner = Depends(
         sl=body.stop_loss,
         tp=body.take_profit,
     )
+    _record_order_attribution(owner, result, body.symbol, body.side, body.size)
     return _result_to_dict(result)
 
 
