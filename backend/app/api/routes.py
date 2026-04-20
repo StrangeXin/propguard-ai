@@ -393,6 +393,7 @@ async def get_signal_source(source_id: str):
 @router.get("/api/accounts/{account_id}/briefing")
 async def get_briefing(
     account_id: str, firm_name: str, account_size: int,
+    _user: Owner = Depends(require_user),  # briefing requires login
     owner: Owner = Depends(require_quota("briefing")),
 ):
     """Generate a pre-market AI briefing for an account."""
