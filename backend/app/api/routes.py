@@ -850,12 +850,17 @@ async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_use
 
 @router.get("/api/trading/history")
 async def trading_history(
-    days: int = 30, limit: int = 200, owner: Owner = Depends(get_owner),
+    days: int = 30,
+    page: int = 1,
+    page_size: int = 20,
+    owner: Owner = Depends(get_owner),
 ):
-    """Get closed trade history. `limit` caps at 1000."""
-    limit = max(1, min(limit, 1000))
+    """Get closed trade history, paginated. `page_size` caps at 100."""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
     broker_impl = get_broker(owner)
-    trades_typed = await broker_impl.history(limit=limit)
+    # Fetch a wide window once (MetaApi doesn't paginate); slice after sort.
+    trades_typed = await broker_impl.history(limit=1000)
     # Collect order_ids and position_ids separately — attribution rows are
     # keyed by these, NOT by ClosedTrade.id (which is the deal_id).
     order_ids = [t.order_id for t in trades_typed if t.order_id]
@@ -890,11 +895,25 @@ async def trading_history(
             if pos_id:
                 asyncio.create_task(asyncio.to_thread(backfill_position_id, order_id, pos_id))
 
+    # Stats are computed over the full result set, before pagination.
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)
     total_pnl = sum(t.get("profit", 0) for t in trades)
+
+    # Slice to the requested page.
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_trades = trades[start:end]
+    total_pages = max(1, (total + page_size - 1) // page_size)
+
     return {
-        "trades": trades,
+        "trades": page_trades,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+        },
         "stats": {
             "total_trades": total,
             "winning_trades": winners,

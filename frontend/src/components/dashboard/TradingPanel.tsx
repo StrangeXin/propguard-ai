@@ -147,7 +147,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
   const [historyStats, setHistoryStats] = useState<{ total_trades: number; win_rate: number; total_pnl: number }>({ total_trades: 0, win_rate: 0, total_pnl: 0 });
-  const [historyLimit, setHistoryLimit] = useState(100);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(20);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
 
   const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
@@ -237,18 +239,19 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   // Fetch trade history (anon allowed)
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/trading/history?days=30&limit=${historyLimit}`, {
-        headers: readHeaders,
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${API_BASE}/api/trading/history?days=30&page=${historyPage}&page_size=${historyPageSize}`,
+        { headers: readHeaders, credentials: "include" },
+      );
       if (res.ok) {
         const data = await res.json();
         setTradeHistory(data.trades || []);
         setHistoryStats(data.stats || { total_trades: 0, win_rate: 0, total_pnl: 0 });
+        setHistoryTotalPages(data.pagination?.total_pages ?? 1);
       }
     } catch { /* silent */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, historyLimit]);
+  }, [token, historyPage, historyPageSize]);
 
   useEffect(() => {
     fetchAccount();
@@ -570,14 +573,35 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                     </span>
                   </div>
                 ))}
-                {tradeHistory.length >= historyLimit && (
-                  <div className="pt-2 text-center">
-                    <button
-                      onClick={() => setHistoryLimit((n) => Math.min(n + 200, 1000))}
-                      className="text-xs text-zinc-500 hover:text-white transition-colors px-3 py-1.5 bg-zinc-800 rounded"
-                    >
-                      {locale === "zh" ? `加载更多（${historyLimit}+）` : `Load more (${historyLimit}+)`}
-                    </button>
+                {historyStats.total_trades > 0 && (
+                  <div className="pt-2 flex items-center justify-between text-xs text-zinc-500">
+                    <div className="flex items-center gap-2">
+                      <span>{locale === "zh" ? "每页" : "Per page"}</span>
+                      <select
+                        value={historyPageSize}
+                        onChange={(e) => { setHistoryPageSize(Number(e.target.value)); setHistoryPage(1); }}
+                        className="bg-zinc-800 text-zinc-300 rounded px-2 py-1 text-xs focus:outline-none"
+                      >
+                        {[10, 20, 50, 100].map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                        disabled={historyPage <= 1}
+                        className="px-2 py-1 rounded bg-zinc-800 disabled:opacity-40 hover:bg-zinc-700 transition-colors"
+                      >‹</button>
+                      <span className="tabular-nums">
+                        {historyPage} / {historyTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                        disabled={historyPage >= historyTotalPages}
+                        className="px-2 py-1 rounded bg-zinc-800 disabled:opacity-40 hover:bg-zinc-700 transition-colors"
+                      >›</button>
+                    </div>
                   </div>
                 )}
               </>
