@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "@/app/providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -130,8 +131,9 @@ const texts: Record<string, Record<string, string>> = {
 };
 
 export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
-  const { locale } = useI18n();
+  const { locale, t: ti18n } = useI18n();
   const { token } = useAuth();
+  const { openGate } = useLoginGate();
   const t = texts[locale] || texts.en;
 
   const [tab, setTab] = useState<"order" | "positions" | "orders" | "history">("order");
@@ -247,6 +249,10 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Place order
   const submitOrder = async (side: string) => {
+    if (!token) {
+      openGate(ti18n("auth.login_to_place_order"));
+      return;
+    }
     setLoading(true);
     setMsg("");
     try {
@@ -282,12 +288,14 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Close position
   const closePos = async (posId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
     fetchAccount();
   };
 
   // Partial close
   const partialClose = async (posId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     if (!partialVol) return;
     await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
     setPartialPos(null);
@@ -297,6 +305,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Modify SL/TP
   const modifyPos = async (posId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
       method: "POST", headers,
       body: JSON.stringify({
@@ -310,6 +319,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Cancel pending order
   const cancelOrder = async (orderId: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
     fetchOrders();
   };
