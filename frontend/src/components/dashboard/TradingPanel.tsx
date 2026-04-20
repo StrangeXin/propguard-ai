@@ -247,6 +247,11 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
   // Place order
   const submitOrder = async (side: string) => {
+    if (!token) {
+      setMsg("Please sign in to place trades.");
+      window.location.href = "/login?next=/dashboard";
+      return;
+    }
     setLoading(true);
     setMsg("");
     try {

@@ -34,8 +34,12 @@ def _verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(check.hex(), h)
 
 
+_PRIVATE_USER_FIELDS = {"password_hash", "metaapi_user_token_encrypted"}
+
+
 def _safe_user(user: dict) -> dict:
-    return {k: v for k, v in user.items() if k != "password_hash"}
+    """Strip fields that must never leave the backend (hashes, ciphertext tokens)."""
+    return {k: v for k, v in user.items() if k not in _PRIVATE_USER_FIELDS}
 
 
 def register_user(email: str, password: str, name: str = "") -> dict:
