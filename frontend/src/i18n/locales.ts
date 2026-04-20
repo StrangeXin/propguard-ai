@@ -39,6 +39,7 @@ export const locales: Record<Locale, Record<string, string>> = {
     "positions.entry": "Entry",
     "positions.current": "Current",
     "positions.pnl": "P&L",
+    "positions.by": "By",
 
     // Briefing
     "briefing.title": "AI Briefing",
@@ -90,6 +91,20 @@ export const locales: Record<Locale, Record<string, string>> = {
     "accounts.broker": "Broker",
     "accounts.addBtn": "Add",
 
+    // Auth / login gate
+    "auth.login_required_title": "Login required",
+    "auth.email": "Email",
+    "auth.password": "Password",
+    "auth.login": "Log in",
+    "auth.logging_in": "Logging in…",
+    "auth.cancel": "Cancel",
+    "auth.no_account": "No account?",
+    "auth.register_cta": "Register",
+    "auth.login_to_view_briefing": "Log in to view today's AI briefing.",
+    "auth.connect_your_account": "Connect my account",
+    "auth.login_to_connect": "Log in to connect your account",
+    "auth.connect_your_account_cta": "Log in to connect your own broker account.",
+
     // Footer
     "footer.lastUpdated": "Last updated",
     "footer.account": "Account",
@@ -135,6 +150,7 @@ export const locales: Record<Locale, Record<string, string>> = {
     "positions.entry": "入场价",
     "positions.current": "当前价",
     "positions.pnl": "盈亏",
+    "positions.by": "下单人",
 
     // Briefing
     "briefing.title": "AI 盘前简报",
@@ -185,6 +201,20 @@ export const locales: Record<Locale, Record<string, string>> = {
     "accounts.size": "账户金额",
     "accounts.broker": "券商",
     "accounts.addBtn": "添加",
+
+    // Auth / login gate
+    "auth.login_required_title": "需要登录",
+    "auth.email": "邮箱",
+    "auth.password": "密码",
+    "auth.login": "登录",
+    "auth.logging_in": "登录中…",
+    "auth.cancel": "取消",
+    "auth.no_account": "没有账号？",
+    "auth.register_cta": "注册",
+    "auth.login_to_view_briefing": "登录后查看今日 AI 简报。",
+    "auth.connect_your_account": "连接我的账户",
+    "auth.login_to_connect": "登录以连接自己的账户",
+    "auth.connect_your_account_cta": "登录后可连接自己的券商账户。",
 
     // Footer
     "footer.lastUpdated": "最后更新",
