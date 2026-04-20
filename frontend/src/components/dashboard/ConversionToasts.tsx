@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/app/providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
+
+type ToastAction =
+  | { kind: "register"; label: string }
+  | { kind: "link"; label: string; href: string };
 
 type Toast = {
-  id: "strategy-cap" | "ai-while-away" | "sandbox-bust";
+  id: "strategy-cap" | "ai-while-away";
   message: string;
-  cta: { label: string; href: string };
+  cta: ToastAction;
 };
 
 const SESSION_KEY = "pg-toasts-dismissed";
@@ -21,22 +26,18 @@ function readDismissed(): Set<string> {
   }
 }
 
-// Three §11 conversion toasts, each fires once per session:
-// 1. Anon saves 3 strategies → "register for 50"
-// 2. AI auto-trader running 15+ min (anon/free) → "upgrade to keep it running"
-// 3. Anon equity < 10% of initial → "sandbox about to reset"
+// Conversion toasts, each fires once per session:
+// 1. Anon saves 3 strategies → register to save up to 50
+// 2. AI auto-trader running 15+ min (anon/free) → upgrade to keep running
 export function ConversionToasts({
   strategyCount,
   aiTradeStartedAt,
-  equity,
-  initialBalance,
 }: {
   strategyCount: number;
   aiTradeStartedAt: number | null;
-  equity: number | null;
-  initialBalance: number | null;
 }) {
   const { user } = useAuth();
+  const { openGate } = useLoginGate();
   const [visible, setVisible] = useState<Toast | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(readDismissed);
 
@@ -56,12 +57,12 @@ export function ConversionToasts({
       setVisible({
         id: "strategy-cap",
         message: "You've saved 3 strategies — the anonymous limit. Register to keep up to 50.",
-        cta: { label: "Register", href: "/login" },
+        cta: { kind: "register", label: "Register" },
       });
     }
   }, [user, strategyCount, dismissed]);
 
-  // Rule 2: AI auto-trade running > 15 min (anon/free only, Pro/Premium run in backend)
+  // Rule 2: AI auto-trade running > 15 min (anon/free only; Pro/Premium run in backend)
   useEffect(() => {
     if (!aiTradeStartedAt) return;
     if (user?.tier === "pro" || user?.tier === "premium") return;
@@ -71,7 +72,7 @@ export function ConversionToasts({
         setVisible({
           id: "ai-while-away",
           message: "AI has been trading for 15+ minutes. Upgrade to Pro to keep it running when you close the tab.",
-          cta: { label: "Upgrade", href: "/pricing" },
+          cta: { kind: "link", label: "Upgrade", href: "/pricing" },
         });
       }
     };
@@ -79,19 +80,6 @@ export function ConversionToasts({
     const t = setInterval(check, 60_000);
     return () => clearInterval(t);
   }, [aiTradeStartedAt, user, dismissed]);
-
-  // Rule 3: sandbox bust (anon only)
-  useEffect(() => {
-    if (user) return;
-    if (equity == null || initialBalance == null || initialBalance === 0) return;
-    if (equity < initialBalance * 0.1 && !dismissed.has("sandbox-bust")) {
-      setVisible({
-        id: "sandbox-bust",
-        message: "Sandbox almost wiped. Try real-account risk controls instead?",
-        cta: { label: "Register", href: "/login" },
-      });
-    }
-  }, [equity, initialBalance, user, dismissed]);
 
   if (!visible) return null;
 
@@ -105,12 +93,21 @@ export function ConversionToasts({
         >
           Dismiss
         </button>
-        <Link
-          href={visible.cta.href}
-          className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition"
-        >
-          {visible.cta.label}
-        </Link>
+        {visible.cta.kind === "register" ? (
+          <button
+            onClick={() => openGate(visible.message, "register")}
+            className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition"
+          >
+            {visible.cta.label}
+          </button>
+        ) : (
+          <Link
+            href={visible.cta.href}
+            className="text-xs px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition"
+          >
+            {visible.cta.label}
+          </Link>
+        )}
       </div>
     </div>
   );

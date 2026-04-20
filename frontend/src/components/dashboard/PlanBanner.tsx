@@ -35,13 +35,13 @@ export function PlanBanner({ userKind, plan, metaapiAccountId }: Props) {
     return (
       <div className="flex items-center justify-between gap-4 rounded border border-blue-600/50 bg-blue-950/40 px-4 py-2 text-sm">
         <div className="text-blue-200">
-          ✅ Logged in · <span className="capitalize">{plan}</span> plan · Sandbox only
+          ✅ Logged in · <span className="capitalize">{plan}</span> plan · Trading on shared MetaApi demo
         </div>
         <Link
           href="/settings/broker"
           className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition"
         >
-          Bind real MetaApi account →
+          Connect your own account →
         </Link>
       </div>
     );

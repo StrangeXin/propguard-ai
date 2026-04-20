@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/providers";
-import { useLoginGate } from "@/hooks/useLoginGate";
+import { useLoginGate, type GateMode } from "@/hooks/useLoginGate";
 import { useI18n } from "@/i18n/context";
 
-type Mode = "login" | "register";
-
 export function LoginModal() {
-  const { open, reason, closeGate } = useLoginGate();
+  const { open, reason, initialMode, closeGate } = useLoginGate();
   const { login, register } = useAuth();
   const { t } = useI18n();
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<GateMode>(initialMode);
+
+  useEffect(() => {
+    if (open) setMode(initialMode);
+  }, [open, initialMode]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -35,7 +37,7 @@ export function LoginModal() {
     }
   }
 
-  function switchMode(next: Mode) {
+  function switchMode(next: GateMode) {
     setMode(next);
     setErr(null);
   }

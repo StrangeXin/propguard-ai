@@ -71,8 +71,6 @@ export default function Dashboard() {
       <ConversionToasts
         strategyCount={0}
         aiTradeStartedAt={null}
-        equity={account?.current_equity ?? null}
-        initialBalance={account?.initial_balance ?? null}
       />
 
       {/* Top bar */}
