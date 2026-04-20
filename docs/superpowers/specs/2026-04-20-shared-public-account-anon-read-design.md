@@ -34,9 +34,28 @@ Shared public account = backend `config.METAAPI_ACCOUNT_ID` (the TopStep/CFT def
 | `POST /api/trading/order/{id}/cancel` | `require_user` | unchanged |
 | `POST /api/ai-trade/analyze` `execute` `start` `stop` | `require_user` | unchanged |
 | `GET /api/accounts/{id}/briefing` | public | **`require_user`** |
-| `POST /api/sandbox/reset` | `require_user` | **`require_user` + reject when `owner.metaapi_account_id is None`** (public account cannot be reset) |
+| `POST /api/sandbox/reset` | `require_user` | **always 403** (see "Broker routing" below — shared and bound accounts are both real MetaApi, neither is resettable) |
 
 Bound users (`owner.metaapi_account_id` non-null) continue to read/write their own MetaApi account. They do not see shared-account data and no attribution is recorded for them.
+
+## Broker routing
+
+Previously `broker_factory.get_broker(owner)` returned `SandboxBroker(owner)` for every unbound owner — a per-owner simulated account. Under this design the shared public account is the real MetaApi demo at `settings.metaapi_account_id`, so the factory changes:
+
+```python
+def get_broker(owner: Owner) -> BrokerBase:
+    if owner.metaapi_account_id:
+        return MetaApiBroker(owner.metaapi_account_id)
+    settings = get_settings()
+    if settings.metaapi_account_id:
+        return MetaApiBroker(settings.metaapi_account_id)
+    return SandboxBroker(owner)  # local-dev fallback when MetaApi unconfigured
+```
+
+Consequences:
+- Every anonymous and unbound-logged-in user now reads/writes the **same real MetaApi demo account**. This is the product decision: real MT5 experience over isolation.
+- Per-owner sandbox rows in Postgres become orphaned. No cleanup migration in this PR — harmless, cleaned up later.
+- `POST /api/sandbox/reset` loses its purpose (neither shared nor bound accounts are sandboxes anymore). We return 403 uniformly with `detail="Account reset is not supported on real broker accounts"` and hide the frontend button for everyone.
 
 ## Data model
 
@@ -160,7 +179,7 @@ Response schema additions (additive, no breaking change):
 - **Bound user** — reads hit their own account, writes skip attribution, frontend hides `By` column. The feature is effectively invisible.
 - **Anonymous cookie** — `get_owner` issues the existing 30-day `anon_session_id` cookie; no new cookie work. Every fetch must use `credentials: 'include'`.
 - **Shared-control abuse** — deferred. Any logged-in user can close any public-account position. Login itself is the gate. Follow-up work can add a `position_actions` audit table and rate limits.
-- **Public-account reset** — hard-blocked by 403 in the backend; no one can reset the shared account. Bound users can still reset their own.
+- **Public-account reset** — hard-blocked by 403 in the backend for everyone. Neither shared nor bound accounts are resettable (both are real MetaApi). Frontend reset button hidden for everyone. If the shared demo account gets blown out, an operator rotates in a fresh `settings.metaapi_account_id`.
 
 ## Testing
 
@@ -175,7 +194,7 @@ Response schema additions (additive, no breaking change):
   - Anon `GET /api/accounts/{id}/briefing` → 401.
   - Logged-in user on shared account placing an order → exactly one new `order_attributions` row with correct `user_label`.
   - Logged-in user on bound account placing an order → no new `order_attributions` row.
-  - Anon / unbound-logged-in `POST /api/sandbox/reset` → 403.
+  - Anon, unbound-logged-in, and bound `POST /api/sandbox/reset` all → 403.
 
 **Frontend manual smoke** (to be codified in the implementation plan via headless browser per `feedback_automate_smoke_tests.md`):
 
