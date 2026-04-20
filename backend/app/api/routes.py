@@ -619,7 +619,7 @@ async def auth_register(body: RegisterInput, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
     # Claim any anon-session data for this new user before logging in, so the
-    # dashboard they land on already shows their sandbox history.
+    # dashboard they land on already shows their trade history.
     claimed: dict[str, int] = {}
     total_claimed = 0
     from app.services.owner_resolver import ANON_COOKIE
@@ -703,7 +703,7 @@ async def user_broker_connect(
 
 @router.delete("/api/user/broker")
 async def user_broker_disconnect(owner: Owner = Depends(require_user)):
-    """Unbind — user reverts to sandbox mode on next request."""
+    """Unbind — user reverts to the shared MetaApi demo on next request."""
     from app.services.auth import update_user
     updated = update_user(owner.id, {"metaapi_account_id": None})
     return {"success": True, "user": updated}
@@ -748,7 +748,7 @@ async def trading_account(owner: Owner = Depends(get_owner)):
         "win_rate": 0,
         "positions": [_position_to_dict(p, labels.get(p.id)) for p in positions],
         "recent_trades": [],
-        "source": "metaapi_mt5" if owner.metaapi_account_id or _shared_account_configured() else "sandbox",
+        "source": "metaapi_mt5",
     }
 
 
@@ -907,17 +907,6 @@ async def trading_account_info(owner: Owner = Depends(get_owner)):
         "free_margin": info.free_margin,
         "currency": info.currency,
     }
-
-
-@router.post("/api/sandbox/reset")
-async def sandbox_reset(owner: Owner = Depends(require_user)):
-    """Account reset is disabled — both shared and bound accounts are real
-    MetaApi demos. Kept as 403 rather than 410 so the frontend can render a
-    tooltip via its existing error handler. See design doc §Broker routing."""
-    raise HTTPException(
-        status_code=403,
-        detail="Account reset is not supported on real broker accounts",
-    )
 
 
 ## ── AI Trading ──────────────────────────────────────────────────
