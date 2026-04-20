@@ -19,6 +19,7 @@ interface Position {
   stop_loss: number | null;
   take_profit: number | null;
   profit: number;
+  user_label?: string | null;
 }
 
 interface PendingOrder {
@@ -29,6 +30,7 @@ interface PendingOrder {
   price: number;
   stop_loss: number | null;
   take_profit: number | null;
+  user_label?: string | null;
 }
 
 interface TradeRecord {
@@ -455,6 +457,11 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   <Badge className={p.side === "long" ? "bg-green-900 text-green-300 text-[10px]" : "bg-red-900 text-red-300 text-[10px]"}>{p.side.toUpperCase()}</Badge>
                   <span className="font-mono text-white text-sm">{p.symbol}</span>
                   <span className="text-xs text-zinc-500">{p.volume} lots @ {p.entry_price}</span>
+                  {p.user_label && (
+                    <span className="text-[10px] text-zinc-500 bg-zinc-800 rounded px-1.5 py-0.5 truncate max-w-[120px]">
+                      {ti18n("positions.by")}: {p.user_label}
+                    </span>
+                  )}
                 </div>
                 <span className={`font-mono text-sm font-bold ${pnlColor(p.profit)}`}>
                   {p.profit >= 0 ? "+" : ""}${p.profit.toFixed(2)}
@@ -507,6 +514,11 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                 <Badge className="bg-yellow-900 text-yellow-300 text-[10px]">{o.type}</Badge>
                 <span className="font-mono text-white text-sm">{o.symbol}</span>
                 <span className="text-xs text-zinc-500">{o.volume} @ {o.price}</span>
+                {o.user_label && (
+                  <span className="text-[10px] text-zinc-500 bg-zinc-800 rounded px-1.5 py-0.5 truncate max-w-[120px]">
+                    {ti18n("positions.by")}: {o.user_label}
+                  </span>
+                )}
               </div>
               <button onClick={() => cancelOrder(o.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">{t.cancel}</button>
             </div>
