@@ -355,6 +355,8 @@ async def mt5_get_trade_history(days: int = 30) -> list[dict]:
                     "swap": float(_g("swap", 0)),
                     "time": str(_g("time", "")),
                     "entry": str(_g("entryType", "")),
+                    "orderId": str(_g("orderId", "")) or None,
+                    "positionId": str(_g("positionId", "")) or None,
                 })
             except Exception as e:
                 logger.warning(f"Skipping deal: {e}")
