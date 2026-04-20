@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "../providers";
 import { PlanBanner } from "@/components/dashboard/PlanBanner";
+import { ConversionToasts } from "@/components/dashboard/ConversionToasts";
 import { useCompliance } from "@/hooks/useCompliance";
 import { AccountHeader } from "@/components/dashboard/AccountHeader";
 import { RuleCard } from "@/components/dashboard/RuleCard";
@@ -64,6 +65,12 @@ export default function Dashboard() {
         userKind={user ? "user" : "anon"}
         plan={user?.tier ?? "anon"}
         metaapiAccountId={user?.metaapi_account_id ?? null}
+      />
+      <ConversionToasts
+        strategyCount={0}
+        aiTradeStartedAt={null}
+        equity={account?.current_equity ?? null}
+        initialBalance={account?.initial_balance ?? null}
       />
 
       {/* Top bar */}
