@@ -969,21 +969,21 @@ async def ai_trade_tick(
         owner=owner,
         consume_quota=False,  # @require_quota already consumed
     )
-    # Log to DB (PR 1's db_save_ai_trade_log handles owner_id + owner_kind
-    # when user_id is provided; for anon we skip the log).
-    if owner.kind == "user":
-        from app.services.database import db_save_ai_trade_log
-        db_save_ai_trade_log(
-            user_id=owner.id,
-            strategy_name=body.strategy.get("name", ""),
-            symbols=",".join(body.strategy.get("symbols", [])),
-            analysis=result.get("analysis", ""),
-            actions_planned=result.get("actions_planned", 0),
-            actions_executed=result.get("actions_executed", 0),
-            prompt=result.get("prompt", ""),
-            result=result,
-            dry_run=body.dry_run,
-        )
+    # Log to DB for both user and anon owners (PR 3b T6: anon trades now
+    # persist under owner_id without an FK to users).
+    from app.services.database import db_save_ai_trade_log
+    db_save_ai_trade_log(
+        strategy_name=body.strategy.get("name", ""),
+        symbols=",".join(body.strategy.get("symbols", [])),
+        analysis=result.get("analysis", ""),
+        actions_planned=result.get("actions_planned", 0),
+        actions_executed=result.get("actions_executed", 0),
+        prompt=result.get("prompt", ""),
+        result=result,
+        dry_run=body.dry_run,
+        owner_id=owner.id,
+        owner_kind=owner.kind,
+    )
 
     import json as _json
     return _json.loads(_json.dumps(result, default=str))
