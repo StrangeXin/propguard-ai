@@ -2,6 +2,7 @@
 REST API routes for PropGuard.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -50,6 +51,8 @@ from app.services.tier import (
 )
 from app.services.position_calculator import calculate_position
 from app.websocket.manager import ws_manager
+from app.config import get_settings
+from app.services.attribution import record_attribution, freeze_user_label
 
 router = APIRouter()
 broker = BrokerAPIClient()
@@ -107,7 +110,9 @@ def _trade_to_dict(t: ClosedTrade, user_label: str | None = None) -> dict:
     }
 
 
-def _result_to_dict(r: OrderResult) -> dict:
+def _result_to_dict(r) -> dict:
+    if isinstance(r, dict):
+        return {"success": r.get("success"), "order_id": r.get("order_id"), "error": r.get("message") or r.get("error")}
     return {"success": r.success, "order_id": r.order_id, "error": r.message}
 
 
@@ -119,10 +124,6 @@ def _record_order_attribution(
     Skips when: order was rejected, owner is on their own bound account, or DB
     write fails (logged). Never raises — the order is already live at broker.
     """
-    from app.config import get_settings
-    from app.services.attribution import record_attribution, freeze_user_label
-    from app.services.auth import get_user_by_id
-
     if not getattr(result, "success", False):
         return
     order_id = getattr(result, "order_id", None)
@@ -150,13 +151,13 @@ def _record_order_attribution(
 
 
 def _shared_account_configured() -> bool:
-    from app.config import get_settings
     return bool(get_settings().metaapi_account_id)
 
 
-def _labels_for_positions(owner: Owner, positions) -> dict:
+def _labels_for_positions(owner: Owner, position_ids: list[str]) -> dict:
     """Return {position_id: user_label} for the shared-account read path.
 
+    Accepts a list of position id strings directly.
     Returns empty dict for bound users — they're on their own MetaApi account
     and attribution does not apply. Frontend hides the By column when the map
     is empty AND all positions lack user_label.
@@ -164,7 +165,7 @@ def _labels_for_positions(owner: Owner, positions) -> dict:
     if owner.metaapi_account_id is not None:
         return {}
     from app.services.attribution import fetch_labels_by_positions
-    return fetch_labels_by_positions([p.id for p in positions if p.id])
+    return fetch_labels_by_positions([pid for pid in position_ids if pid])
 
 
 def _labels_for_orders(owner: Owner, order_ids: list) -> dict:
@@ -734,7 +735,7 @@ async def trading_account(owner: Owner = Depends(get_owner)):
     positions = await broker_impl.positions()
     initial = 100000.0
     pnl = info.equity - initial
-    labels = _labels_for_positions(owner, positions)
+    labels = _labels_for_positions(owner, [p.id for p in positions])
     return {
         "balance": info.balance,
         "equity": info.equity,
@@ -840,7 +841,37 @@ async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
     """Get closed trade history."""
     broker_impl = get_broker(owner)
     trades_typed = await broker_impl.history(limit=100)
-    labels = _labels_for_orders(owner, [t.id for t in trades_typed])
+
+    # Build label map from both order_id and position_id lookups so that
+    # market-order attributions (stored by order_id) and position-based
+    # lookups both resolve.  Merge: order_id map wins; position_id map fills
+    # gaps for trades where only position_id was backfilled.
+    trade_ids = [t.id for t in trades_typed]
+    labels_by_order = _labels_for_orders(owner, trade_ids)
+    labels_by_position = _labels_for_positions(owner, trade_ids)
+    # Merge: order_id entries take precedence, position_id fills gaps
+    labels = {**labels_by_position, **labels_by_order}
+
+    # Lazy backfill: for attribution rows that still lack broker_position_id,
+    # fire-and-forget an update now that we have the trade's id (which serves
+    # as the position_id for closed trades).  We use fetch_attributions_by_orders
+    # to identify which rows need backfilling.
+    if owner.metaapi_account_id is None and trade_ids:
+        from app.services.attribution import fetch_attributions_by_orders, backfill_position_id
+        # Build a quick id→trade map so we can supply the position_id value
+        trade_id_set = set(trade_ids)
+        attr_rows = fetch_attributions_by_orders(trade_ids)
+        for row in attr_rows:
+            order_id = row.get("broker_order_id")
+            if not row.get("broker_position_id") and order_id and order_id in trade_id_set:
+                # t.id is the stable id for this closed trade; use it as position_id
+                _oid = order_id
+
+                async def _backfill(oid=_oid) -> None:
+                    backfill_position_id(oid, oid)
+
+                asyncio.create_task(_backfill())
+
     trades = [_trade_to_dict(t, labels.get(t.id)) for t in trades_typed]
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)

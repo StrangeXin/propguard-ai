@@ -111,6 +111,28 @@ def fetch_labels_by_positions(position_ids: list[str]) -> dict[str, str]:
         return {}
 
 
+def fetch_attributions_by_orders(order_ids: list[str]) -> list[dict]:
+    """Return full attribution rows for the given broker_order_ids.
+
+    Used by trading_history to detect rows that lack broker_position_id so
+    the caller can fire-and-forget backfill tasks.  Fails open — returns []
+    on DB error.
+    """
+    if not order_ids:
+        return []
+    db = get_db()
+    if not db:
+        return []
+    try:
+        result = db.table("order_attributions").select(
+            "broker_order_id,broker_position_id,user_label"
+        ).in_("broker_order_id", order_ids).execute()
+        return list(result.data or [])
+    except Exception as e:
+        logger.error("fetch_attributions_by_orders: %s", e)
+        return []
+
+
 def backfill_position_id(broker_order_id: str, broker_position_id: str) -> None:
     """Set broker_position_id on an existing attribution row. Fire-and-forget.
     Used lazily from /api/trading/history when a pending order's position id
