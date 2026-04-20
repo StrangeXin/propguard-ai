@@ -11,11 +11,8 @@ Tests:
   1. Anon GET /api/trading/account → 200, positions include user_label
   2. Anon POST /api/trading/order → 401
   3. Anon GET /api/accounts/{id}/briefing → 401
-  4. Anon POST /api/sandbox/reset → 401 (require_user fires before 403)
-  5. Logged-in-unbound POST /api/sandbox/reset → 403
-  6. Logged-in-bound POST /api/sandbox/reset → 403
-  7. Logged-in-unbound POST /api/trading/order on shared account → attribution recorded
-  8. Logged-in-bound POST /api/trading/order on own account → attribution NOT recorded
+  4. Logged-in-unbound POST /api/trading/order on shared account → attribution recorded
+  5. Logged-in-bound POST /api/trading/order on own account → attribution NOT recorded
 """
 
 import time
@@ -51,7 +48,7 @@ _NOW = datetime(2026, 4, 20, 9, 0, 0)
 
 # A mock Settings object that satisfies BrokerAPIClient.__init__ without DB.
 _MOCK_SETTINGS = MagicMock(
-    metaapi_account_id="",  # unset → sandbox in default factory
+    metaapi_account_id="",  # unset → factory raises RuntimeError (tested separately)
     broker_api_url="",
     broker_api_key="",
     broker_api_secret="",
@@ -190,32 +187,6 @@ def test_anon_cannot_get_briefing(client):
             params={"firm_name": "ftmo", "account_size": 100000},
         )
     assert res.status_code == 401, f"Expected 401, got {res.status_code}: {res.text}"
-
-
-def test_sandbox_reset_rejected_for_anon(client):
-    """Anon POST /api/sandbox/reset → 401 (require_user fires before the 403)."""
-    p1, p2, p3 = _anon_patches()
-    with p1, p2, p3:
-        res = client.post("/api/sandbox/reset")
-    assert res.status_code == 401, f"Expected 401, got {res.status_code}: {res.text}"
-
-
-def test_sandbox_reset_rejected_for_logged_in_unbound(client, unbound_token):
-    """Logged-in unbound user POST /api/sandbox/reset → 403."""
-    res = client.post(
-        "/api/sandbox/reset",
-        headers={"Authorization": f"Bearer {unbound_token}"},
-    )
-    assert res.status_code == 403, f"Expected 403, got {res.status_code}: {res.text}"
-
-
-def test_sandbox_reset_rejected_for_bound(client, bound_token):
-    """Logged-in bound user POST /api/sandbox/reset → 403."""
-    res = client.post(
-        "/api/sandbox/reset",
-        headers={"Authorization": f"Bearer {bound_token}"},
-    )
-    assert res.status_code == 403, f"Expected 403, got {res.status_code}: {res.text}"
 
 
 def test_logged_in_shared_account_write_records_attribution(

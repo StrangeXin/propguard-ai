@@ -5,7 +5,6 @@ from unittest.mock import patch, MagicMock
 from app.models.owner import Owner
 from app.services.broker_factory import get_broker
 from app.services.metaapi_broker import MetaApiBroker
-from app.services.sandbox_broker import SandboxBroker
 
 
 def _owner(metaapi_account_id=None, kind="user"):
@@ -35,9 +34,9 @@ def test_unbound_anon_also_routes_to_shared_metaapi():
     assert broker._account_id == "acc-shared"
 
 
-def test_unbound_owner_falls_back_to_sandbox_when_metaapi_not_configured():
+def test_unbound_owner_raises_when_metaapi_not_configured():
+    import pytest
     mock_settings = MagicMock(metaapi_account_id="")
-    with patch("app.services.broker_factory.get_settings", return_value=mock_settings), \
-         patch("app.services.sandbox_broker.sandbox_get_or_create_account", return_value={}):
-        broker = get_broker(_owner())
-    assert isinstance(broker, SandboxBroker)
+    with patch("app.services.broker_factory.get_settings", return_value=mock_settings):
+        with pytest.raises(RuntimeError, match="MetaApi is not configured"):
+            get_broker(_owner())

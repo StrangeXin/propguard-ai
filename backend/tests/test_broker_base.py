@@ -1,7 +1,7 @@
 """Tests for BrokerBase protocol.
 
 Verify the protocol can be satisfied by a minimal stub. Actual implementations
-are tested separately (test_sandbox_broker.py, test_metaapi_broker.py).
+are tested separately (test_metaapi_broker.py).
 """
 
 import pytest

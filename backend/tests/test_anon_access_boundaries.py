@@ -50,7 +50,7 @@ class TestAnonCanView:
 
 
 class TestAnonCannotTrade:
-    """Writing orders, modifying positions, resetting sandbox — all login-gated."""
+    """Writing orders, modifying positions — all login-gated."""
 
     def test_anon_cannot_get_trading_account(self):
         assert _client().get("/api/trading/account").status_code == 401
@@ -60,9 +60,6 @@ class TestAnonCannotTrade:
             "symbol": "EURUSD", "side": "buy", "size": 0.1,
         })
         assert resp.status_code == 401
-
-    def test_anon_cannot_reset_sandbox(self):
-        assert _client().post("/api/sandbox/reset").status_code == 401
 
     def test_anon_cannot_execute_ai_actions(self):
         resp = _client().post("/api/ai-trade/execute", json={"actions": []})
