@@ -62,7 +62,7 @@ broker = BrokerAPIClient()
 # for the UI.
 
 
-def _position_to_dict(p: PositionDTO) -> dict:
+def _position_to_dict(p: PositionDTO, user_label: str | None = None) -> dict:
     return {
         "id": p.id,
         "symbol": p.symbol,
@@ -73,10 +73,11 @@ def _position_to_dict(p: PositionDTO) -> dict:
         "profit": p.unrealized_pnl,
         "stop_loss": p.stop_loss,
         "take_profit": p.take_profit,
+        "user_label": user_label,
     }
 
 
-def _order_to_dict(o: OrderDTO) -> dict:
+def _order_to_dict(o: OrderDTO, user_label: str | None = None) -> dict:
     return {
         "id": o.id,
         "symbol": o.symbol,
@@ -86,10 +87,11 @@ def _order_to_dict(o: OrderDTO) -> dict:
         "price": o.price,
         "stop_loss": o.stop_loss,
         "take_profit": o.take_profit,
+        "user_label": user_label,
     }
 
 
-def _trade_to_dict(t: ClosedTrade) -> dict:
+def _trade_to_dict(t: ClosedTrade, user_label: str | None = None) -> dict:
     side = "buy" if t.side == "long" else "sell"
     return {
         "id": t.id,
@@ -101,6 +103,7 @@ def _trade_to_dict(t: ClosedTrade) -> dict:
         "entry_price": t.entry_price,
         "exit_price": t.exit_price,
         "profit": t.pnl,
+        "user_label": user_label,
     }
 
 
@@ -144,6 +147,31 @@ def _record_order_attribution(
         side=side,
         volume=volume,
     )
+
+
+def _shared_account_configured() -> bool:
+    from app.config import get_settings
+    return bool(get_settings().metaapi_account_id)
+
+
+def _labels_for_positions(owner: Owner, positions) -> dict:
+    """Return {position_id: user_label} for the shared-account read path.
+
+    Returns empty dict for bound users — they're on their own MetaApi account
+    and attribution does not apply. Frontend hides the By column when the map
+    is empty AND all positions lack user_label.
+    """
+    if owner.metaapi_account_id is not None:
+        return {}
+    from app.services.attribution import fetch_labels_by_positions
+    return fetch_labels_by_positions([p.id for p in positions if p.id])
+
+
+def _labels_for_orders(owner: Owner, order_ids: list) -> dict:
+    if owner.metaapi_account_id is not None:
+        return {}
+    from app.services.attribution import fetch_labels_by_orders
+    return fetch_labels_by_orders([oid for oid in order_ids if oid])
 
 
 @router.get("/api/firms")
@@ -703,8 +731,9 @@ async def trading_account(owner: Owner = Depends(get_owner)):
     broker_impl = get_broker(owner)
     info = await broker_impl.account_info()
     positions = await broker_impl.positions()
-    initial = 100000.0  # initial balance baseline; sandbox starts at 100k, MetaApi ignores
+    initial = 100000.0
     pnl = info.equity - initial
+    labels = _labels_for_positions(owner, positions)
     return {
         "balance": info.balance,
         "equity": info.equity,
@@ -715,9 +744,9 @@ async def trading_account(owner: Owner = Depends(get_owner)):
         "total_trades": 0,
         "winning_trades": 0,
         "win_rate": 0,
-        "positions": [_position_to_dict(p) for p in positions],
+        "positions": [_position_to_dict(p, labels.get(p.id)) for p in positions],
         "recent_trades": [],
-        "source": "metaapi_mt5_demo" if owner.metaapi_account_id else "sandbox",
+        "source": "metaapi_mt5" if owner.metaapi_account_id or _shared_account_configured() else "sandbox",
     }
 
 
@@ -794,7 +823,8 @@ async def trading_orders(owner: Owner = Depends(get_owner)):
     """Get all pending orders."""
     broker_impl = get_broker(owner)
     orders = await broker_impl.pending_orders()
-    return {"orders": [_order_to_dict(o) for o in orders]}
+    labels = _labels_for_orders(owner, [o.id for o in orders])
+    return {"orders": [_order_to_dict(o, labels.get(o.id)) for o in orders]}
 
 
 @router.post("/api/trading/order/{order_id}/cancel")
@@ -809,7 +839,8 @@ async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
     """Get closed trade history."""
     broker_impl = get_broker(owner)
     trades_typed = await broker_impl.history(limit=100)
-    trades = [_trade_to_dict(t) for t in trades_typed]
+    labels = _labels_for_orders(owner, [t.id for t in trades_typed])
+    trades = [_trade_to_dict(t, labels.get(t.id)) for t in trades_typed]
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)
     total_pnl = sum(t.get("profit", 0) for t in trades)
