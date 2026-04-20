@@ -841,38 +841,37 @@ async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
     """Get closed trade history."""
     broker_impl = get_broker(owner)
     trades_typed = await broker_impl.history(limit=100)
+    # Collect order_ids and position_ids separately — attribution rows are
+    # keyed by these, NOT by ClosedTrade.id (which is the deal_id).
+    order_ids = [t.order_id for t in trades_typed if t.order_id]
+    position_ids = [t.position_id for t in trades_typed if t.position_id]
+    labels_by_order = _labels_for_orders(owner, order_ids)
+    labels_by_position = _labels_for_positions(owner, position_ids)
 
-    # Build label map from both order_id and position_id lookups so that
-    # market-order attributions (stored by order_id) and position-based
-    # lookups both resolve.  Merge: order_id map wins; position_id map fills
-    # gaps for trades where only position_id was backfilled.
-    trade_ids = [t.id for t in trades_typed]
-    labels_by_order = _labels_for_orders(owner, trade_ids)
-    labels_by_position = _labels_for_positions(owner, trade_ids)
-    # Merge: order_id entries take precedence, position_id fills gaps
-    labels = {**labels_by_position, **labels_by_order}
+    def _label_for(t):
+        if t.order_id and t.order_id in labels_by_order:
+            return labels_by_order[t.order_id]
+        if t.position_id and t.position_id in labels_by_position:
+            return labels_by_position[t.position_id]
+        return None
 
-    # Lazy backfill: for attribution rows that still lack broker_position_id,
-    # fire-and-forget an update now that we have the trade's id (which serves
-    # as the position_id for closed trades).  We use fetch_attributions_by_orders
-    # to identify which rows need backfilling.
-    if owner.metaapi_account_id is None and trade_ids:
+    trades = [_trade_to_dict(t, _label_for(t)) for t in trades_typed]
+
+    # Lazy backfill: attribution rows with known order_id but missing
+    # broker_position_id — set it now if we learned it from this deal.
+    if owner.metaapi_account_id is None and order_ids:
         from app.services.attribution import fetch_attributions_by_orders, backfill_position_id
-        # Build a quick id→trade map so we can supply the position_id value
-        trade_id_set = set(trade_ids)
-        attr_rows = fetch_attributions_by_orders(trade_ids)
+        attr_rows = fetch_attributions_by_orders(order_ids)
+        # Build order_id → position_id from the trades we just got.
+        order_to_pos = {t.order_id: t.position_id for t in trades_typed if t.order_id and t.position_id}
         for row in attr_rows:
             order_id = row.get("broker_order_id")
-            if not row.get("broker_position_id") and order_id and order_id in trade_id_set:
-                # t.id is the stable id for this closed trade; use it as position_id
-                _oid = order_id
+            if row.get("broker_position_id"):
+                continue  # already backfilled
+            pos_id = order_to_pos.get(order_id)
+            if pos_id:
+                asyncio.create_task(asyncio.to_thread(backfill_position_id, order_id, pos_id))
 
-                async def _backfill(oid=_oid) -> None:
-                    backfill_position_id(oid, oid)
-
-                asyncio.create_task(_backfill())
-
-    trades = [_trade_to_dict(t, labels.get(t.id)) for t in trades_typed]
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)
     total_pnl = sum(t.get("profit", 0) for t in trades)

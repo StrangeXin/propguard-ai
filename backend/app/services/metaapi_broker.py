@@ -132,6 +132,8 @@ class MetaApiBroker:
                     pnl=float(d.get("profit", 0)),
                     opened_at=datetime.now(timezone.utc),
                     closed_at=datetime.now(timezone.utc),
+                    order_id=str(d.get("orderId")) if d.get("orderId") else None,
+                    position_id=str(d.get("positionId")) if d.get("positionId") else None,
                 ))
             except Exception:
                 continue

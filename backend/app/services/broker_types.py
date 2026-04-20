@@ -69,3 +69,5 @@ class ClosedTrade:
     pnl: float
     opened_at: datetime
     closed_at: datetime
+    order_id: str | None = None
+    position_id: str | None = None
