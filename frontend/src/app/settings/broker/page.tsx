@@ -14,6 +14,7 @@ export default function BrokerSettingsPage() {
   const router = useRouter();
   const currentBinding = user?.metaapi_account_id ?? "";
   const [accountId, setAccountId] = useState(currentBinding);
+  const [userToken, setUserToken] = useState("");
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [message, setMessage] = useState("");
 
@@ -37,7 +38,10 @@ export default function BrokerSettingsPage() {
         "/api/user/broker/connect",
         {
           method: "POST",
-          body: JSON.stringify({ metaapi_account_id: accountId.trim() }),
+          body: JSON.stringify({
+            metaapi_account_id: accountId.trim(),
+            metaapi_user_token: userToken.trim(),
+          }),
         },
       );
       setStatus("connected");
@@ -82,28 +86,45 @@ export default function BrokerSettingsPage() {
         </p>
       </div>
 
-      <div className="text-xs text-amber-300 bg-amber-950/40 border border-amber-900 rounded px-3 py-2">
-        ⚠️ <strong>Security:</strong> Only enter an account ID that belongs to you.
-        PropGuard does not verify ownership — if you bind someone else's account,
-        you will see their trades and risk their funds.
-      </div>
-
       {currentBinding && (
         <div className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-900 rounded px-3 py-2">
           Currently bound: <span className="font-mono">{currentBinding}</span>
         </div>
       )}
 
-      <form onSubmit={submit} className="space-y-3">
-        <label className="block text-sm font-medium">MetaApi account ID</label>
-        <input
-          type="text"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          className="w-full px-3 py-2 rounded bg-neutral-800 border border-neutral-700 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-          required
-        />
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-1">
+          <label className="block text-sm font-medium">MetaApi account ID</label>
+          <input
+            type="text"
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            className="w-full px-3 py-2 rounded bg-neutral-800 border border-neutral-700 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            required
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-sm font-medium">MetaApi API token</label>
+          <input
+            type="password"
+            value={userToken}
+            onChange={(e) => setUserToken(e.target.value)}
+            placeholder="Paste from app.metaapi.cloud → API Access"
+            className="w-full px-3 py-2 rounded bg-neutral-800 border border-neutral-700 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            required
+            autoComplete="off"
+          />
+          <p className="text-xs text-neutral-500">
+            Used only to verify ownership. Stored AES-GCM encrypted.
+            Get your token from{" "}
+            <a className="underline hover:text-white"
+               href="https://app.metaapi.cloud/token" target="_blank" rel="noreferrer">
+              app.metaapi.cloud/token
+            </a>.
+          </p>
+        </div>
         <div className="flex gap-2">
           <button
             type="submit"

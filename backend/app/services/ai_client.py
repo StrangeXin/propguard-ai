@@ -36,6 +36,22 @@ class AIClient:
         if consume_quota:
             check_and_consume(self._owner, action)
 
+        # Defense-in-depth: global daily ceiling on anon spend. Kicks in
+        # if IP-cap rotation bypasses the per-IP limit (PR 3b T3).
+        if self._owner.kind == "anon":
+            from app.services.ai_cost import get_anon_cost_today
+            from app.config import get_settings
+            from app.services.quota import QuotaExceeded
+            ceiling = get_settings().anon_daily_cost_ceiling_usd
+            today_anon_cost = get_anon_cost_today()
+            if today_anon_cost >= ceiling:
+                raise QuotaExceeded(
+                    action=f"anon-cost-ceiling:{action}",
+                    limit=int(ceiling),
+                    used=int(today_anon_cost),
+                    plan="anon",
+                )
+
         resp = await self._client.messages.create(
             model=self._model,
             max_tokens=max_tokens,

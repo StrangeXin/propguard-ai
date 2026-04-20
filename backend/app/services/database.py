@@ -185,21 +185,38 @@ def db_get_alerts(user_id: str | None = None, account_id: str | None = None, lim
 
 
 def db_save_ai_trade_log(
-    user_id: str | None,
-    strategy_name: str,
-    symbols: str,
-    analysis: str,
-    actions_planned: int,
-    actions_executed: int,
-    prompt: str,
-    result: dict,
-    dry_run: bool,
+    user_id: str | None = None,
+    strategy_name: str = "",
+    symbols: str = "",
+    analysis: str = "",
+    actions_planned: int = 0,
+    actions_executed: int = 0,
+    prompt: str = "",
+    result: dict | None = None,
+    dry_run: bool = True,
+    *,
+    owner_id: str | None = None,
+    owner_kind: str | None = None,
 ) -> dict | None:
+    """Insert an AI trade log row.
+
+    Accepts either legacy `user_id` (for user callers) or explicit
+    `owner_id`/`owner_kind` (needed for anon owners since `user_id` has
+    an FK to `users`). When `user_id` is given, derives owner fields.
+    """
     db = get_db()
     if not db:
         return None
     try:
         import json
+        # Derive owner from legacy user_id param when caller didn't pass explicit.
+        if owner_id is None and user_id is not None:
+            owner_id = user_id
+            owner_kind = "user"
+        if owner_id is None or owner_kind is None:
+            logger.warning("db_save_ai_trade_log: no owner context — skipping log")
+            return None
+
         row = {
             "strategy_name": strategy_name,
             "symbols": symbols,
@@ -209,11 +226,12 @@ def db_save_ai_trade_log(
             "prompt": prompt[:5000] if prompt else "",
             "result": json.dumps(result, default=str)[:5000] if result else "{}",
             "dry_run": dry_run,
+            "owner_id": owner_id,
+            "owner_kind": owner_kind,
         }
-        if user_id:
-            row["user_id"] = user_id
-            row["owner_id"] = user_id
-            row["owner_kind"] = "user"
+        # user_id has FK to users, so only set it for 'user' kind.
+        if owner_kind == "user":
+            row["user_id"] = owner_id
         result_db = db.table("ai_trade_logs").insert(row).execute()
         if result_db.data:
             return result_db.data[0]
