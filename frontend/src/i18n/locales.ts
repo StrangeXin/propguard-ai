@@ -92,11 +92,15 @@ export const locales: Record<Locale, Record<string, string>> = {
     "accounts.addBtn": "Add",
 
     // Auth / login gate
-    "auth.login_required_title": "Login required",
+    "auth.login_required_title": "Log in",
+    "auth.register_required_title": "Create your account",
     "auth.email": "Email",
     "auth.password": "Password",
+    "auth.password_register_hint": "Password (min 6 characters)",
+    "auth.name_optional": "Name (optional)",
     "auth.login": "Log in",
     "auth.logging_in": "Logging in…",
+    "auth.registering": "Creating account…",
     "auth.cancel": "Cancel",
     "auth.no_account": "No account?",
     "auth.register_cta": "Register",
@@ -205,11 +209,15 @@ export const locales: Record<Locale, Record<string, string>> = {
     "accounts.addBtn": "添加",
 
     // Auth / login gate
-    "auth.login_required_title": "需要登录",
+    "auth.login_required_title": "登录",
+    "auth.register_required_title": "注册账号",
     "auth.email": "邮箱",
     "auth.password": "密码",
+    "auth.password_register_hint": "密码（至少 6 位）",
+    "auth.name_optional": "昵称（可选）",
     "auth.login": "登录",
     "auth.logging_in": "登录中…",
+    "auth.registering": "注册中…",
     "auth.cancel": "取消",
     "auth.no_account": "没有账号？",
     "auth.register_cta": "注册",
