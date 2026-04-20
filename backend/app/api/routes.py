@@ -76,6 +76,7 @@ def _position_to_dict(p: PositionDTO, user_label: str | None = None) -> dict:
         "profit": p.unrealized_pnl,
         "stop_loss": p.stop_loss,
         "take_profit": p.take_profit,
+        "opened_at": p.opened_at.isoformat() if p.opened_at else None,
         "user_label": user_label,
     }
 
@@ -90,6 +91,7 @@ def _order_to_dict(o: OrderDTO, user_label: str | None = None) -> dict:
         "price": o.price,
         "stop_loss": o.stop_loss,
         "take_profit": o.take_profit,
+        "created_at": o.created_at.isoformat() if o.created_at else None,
         "user_label": user_label,
     }
 

@@ -19,6 +19,7 @@ interface Position {
   stop_loss: number | null;
   take_profit: number | null;
   profit: number;
+  opened_at?: string | null;
   user_label?: string | null;
 }
 
@@ -30,6 +31,7 @@ interface PendingOrder {
   price: number;
   stop_loss: number | null;
   take_profit: number | null;
+  created_at?: string | null;
   user_label?: string | null;
 }
 
@@ -476,6 +478,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                 <span>SL: {p.stop_loss || "—"}</span>
                 <span>TP: {p.take_profit || "—"}</span>
                 <span>Now: {p.current_price}</span>
+                {p.opened_at && (
+                  <span className="ml-auto tabular-nums">{fmtShortTime(p.opened_at)}</span>
+                )}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => closePos(p.id)} className="px-3 py-1 bg-red-900/50 text-red-300 text-xs rounded hover:bg-red-900 transition-colors">{t.close}</button>
@@ -515,7 +520,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           )}
           {pendingOrders.map((o) => (
             <div key={o.id} className="bg-zinc-900 rounded-lg px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Badge className="bg-yellow-900 text-yellow-300 text-[10px]">{o.type}</Badge>
                 <span className="font-mono text-white text-sm">{o.symbol}</span>
                 <span className="text-xs text-zinc-500">{o.volume} @ {o.price}</span>
@@ -523,6 +528,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   <span className="text-[10px] text-zinc-500 bg-zinc-800 rounded px-1.5 py-0.5 truncate max-w-[120px]">
                     {ti18n("positions.by")}: {o.user_label}
                   </span>
+                )}
+                {o.created_at && (
+                  <span className="text-[10px] text-zinc-600 tabular-nums ml-1">{fmtShortTime(o.created_at)}</span>
                 )}
               </div>
               <button onClick={() => cancelOrder(o.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">{t.cancel}</button>
@@ -545,16 +553,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           )}
           {(() => {
             const showByColumn = tradeHistory.some((d) => d.user_label != null);
-            const fmtTime = (iso?: string | null) => {
-              if (!iso) return "—";
-              try {
-                const d = new Date(iso);
-                return d.toLocaleString([], {
-                  month: "2-digit", day: "2-digit",
-                  hour: "2-digit", minute: "2-digit",
-                });
-              } catch { return "—"; }
-            };
+            const fmtTime = (iso?: string | null) => fmtShortTime(iso) || "—";
             return (
               <>
                 {tradeHistory.map((trade, i) => (
@@ -611,6 +610,17 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       )}
     </div>
   );
+}
+
+function fmtShortTime(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString([], {
+      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 }
 
 function Stat({ label, value, color = "text-white" }: { label: string; value: string; color?: string }) {

@@ -155,6 +155,7 @@ async def mt5_get_positions() -> list[dict]:
                 "profit": p.get("profit", 0),
                 "swap": p.get("swap", 0),
                 "commission": p.get("commission", 0),
+                "time": str(p.get("time", "")) or None,
             }
             for p in positions
         ]
@@ -180,6 +181,7 @@ async def mt5_get_orders() -> list[dict]:
                 "price": o.get("openPrice", 0),
                 "stop_loss": o.get("stopLoss"),
                 "take_profit": o.get("takeProfit"),
+                "time": str(o.get("time", "")) or None,
             }
             for o in orders
         ]

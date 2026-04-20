@@ -86,7 +86,7 @@ class MetaApiBroker:
                 unrealized_pnl=float(p.get("profit", 0)),
                 stop_loss=float(p["stop_loss"]) if p.get("stop_loss") else None,
                 take_profit=float(p["take_profit"]) if p.get("take_profit") else None,
-                opened_at=datetime.now(timezone.utc),
+                opened_at=_parse_deal_time(p.get("time")),
             ))
         return out
 
@@ -107,7 +107,7 @@ class MetaApiBroker:
                 stop_loss=float(o["stop_loss"]) if o.get("stop_loss") else None,
                 take_profit=float(o["take_profit"]) if o.get("take_profit") else None,
                 status="pending",
-                created_at=datetime.now(timezone.utc),
+                created_at=_parse_deal_time(o.get("time")),
             ))
         return out
 
