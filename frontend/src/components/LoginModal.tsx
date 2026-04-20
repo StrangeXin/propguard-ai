@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/providers";
-import { useLoginGate } from "@/hooks/useLoginGate";
+import { useLoginGate, type GateMode } from "@/hooks/useLoginGate";
 import { useI18n } from "@/i18n/context";
 
 export function LoginModal() {
-  const { open, reason, closeGate } = useLoginGate();
-  const { login } = useAuth();
+  const { open, reason, initialMode, closeGate } = useLoginGate();
+  const { login, register } = useAuth();
   const { t } = useI18n();
+  const [mode, setMode] = useState<GateMode>(initialMode);
+
+  useEffect(() => {
+    if (open) setMode(initialMode);
+  }, [open, initialMode]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,7 +26,9 @@ export function LoginModal() {
     e.preventDefault();
     setErr(null);
     setSubmitting(true);
-    const result = await login(email, password);
+    const result = mode === "login"
+      ? await login(email, password)
+      : await register(email, password, name);
     setSubmitting(false);
     if (result) {
       setErr(result);
@@ -28,6 +36,16 @@ export function LoginModal() {
       closeGate();
     }
   }
+
+  function switchMode(next: GateMode) {
+    setMode(next);
+    setErr(null);
+  }
+
+  const title = mode === "login" ? t("auth.login_required_title") : t("auth.register_required_title");
+  const submitLabel = mode === "login"
+    ? (submitting ? t("auth.logging_in") : t("auth.login"))
+    : (submitting ? t("auth.registering") : t("auth.register_cta"));
 
   return (
     <div
@@ -40,9 +58,38 @@ export function LoginModal() {
         className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-semibold mb-1">{t("auth.login_required_title")}</h2>
+        <div className="flex gap-1 mb-4 bg-neutral-800 rounded p-1">
+          <button
+            type="button"
+            onClick={() => switchMode("login")}
+            className={`flex-1 py-1.5 text-sm rounded transition ${
+              mode === "login" ? "bg-neutral-700 text-white" : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            {t("auth.login")}
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode("register")}
+            className={`flex-1 py-1.5 text-sm rounded transition ${
+              mode === "register" ? "bg-neutral-700 text-white" : "text-neutral-400 hover:text-white"
+            }`}
+          >
+            {t("auth.register_cta")}
+          </button>
+        </div>
+        <h2 className="text-xl font-semibold mb-1">{title}</h2>
         {reason && <p className="text-sm text-neutral-400 mb-4">{reason}</p>}
         <form onSubmit={onSubmit} className="space-y-3">
+          {mode === "register" && (
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("auth.name_optional")}
+              className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white"
+            />
+          )}
           <input
             type="email"
             required
@@ -55,9 +102,10 @@ export function LoginModal() {
           <input
             type="password"
             required
+            minLength={mode === "register" ? 6 : undefined}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={t("auth.password")}
+            placeholder={mode === "register" ? t("auth.password_register_hint") : t("auth.password")}
             className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white"
           />
           {err && <p className="text-sm text-red-400">{err}</p>}
@@ -74,15 +122,9 @@ export function LoginModal() {
               disabled={submitting}
               className="px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
             >
-              {submitting ? t("auth.logging_in") : t("auth.login")}
+              {submitLabel}
             </button>
           </div>
-          <p className="text-xs text-neutral-500 pt-2">
-            {t("auth.no_account")}{" "}
-            <a href="/login?mode=register" className="text-blue-400 hover:underline">
-              {t("auth.register_cta")}
-            </a>
-          </p>
         </form>
       </div>
     </div>

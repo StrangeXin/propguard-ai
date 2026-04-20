@@ -19,6 +19,8 @@ interface Position {
   stop_loss: number | null;
   take_profit: number | null;
   profit: number;
+  opened_at?: string | null;
+  user_label?: string | null;
 }
 
 interface PendingOrder {
@@ -29,15 +31,18 @@ interface PendingOrder {
   price: number;
   stop_loss: number | null;
   take_profit: number | null;
+  created_at?: string | null;
+  user_label?: string | null;
 }
 
 interface TradeRecord {
+  id?: string;
   symbol: string;
   side: string;
   volume: number;
   price: number;
   profit: number;
-  time: string;
+  time?: string | null;
   user_label?: string | null;
 }
 
@@ -144,6 +149,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
   const [historyStats, setHistoryStats] = useState<{ total_trades: number; win_rate: number; total_pnl: number }>({ total_trades: 0, win_rate: 0, total_pnl: 0 });
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(20);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
 
   const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
@@ -173,24 +181,35 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [partialPos, setPartialPos] = useState<string | null>(null);
   const [partialVol, setPartialVol] = useState("");
 
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) authHeaders.Authorization = `Bearer ${token}`;
+  const headers = authHeaders;
 
-  // Fetch account + positions
+  const readHeaders: Record<string, string> = {};
+  if (token) readHeaders.Authorization = `Bearer ${token}`;
+
+  // Fetch account + positions (anon allowed — routes to shared public account)
   const fetchAccount = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/account`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/account`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) setAccount(await res.json());
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Fetch account info (margin, leverage)
+  // Fetch account info (margin, leverage) — anon allowed
   const fetchAccountInfo = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/account-info`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/account-info`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) setAccountInfo(await res.json());
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Fetch symbol price
@@ -204,30 +223,37 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     } catch { /* silent */ }
   }, [symbol]);
 
-  // Fetch pending orders
+  // Fetch pending orders (anon allowed)
   const fetchOrders = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/orders`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_BASE}/api/trading/orders`, {
+        headers: readHeaders,
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setPendingOrders(data.orders || []);
       }
     } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Fetch trade history
+  // Fetch trade history (anon allowed)
   const fetchHistory = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/trading/history?days=30`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(
+        `${API_BASE}/api/trading/history?days=30&page=${historyPage}&page_size=${historyPageSize}`,
+        { headers: readHeaders, credentials: "include" },
+      );
       if (res.ok) {
         const data = await res.json();
         setTradeHistory(data.trades || []);
         setHistoryStats(data.stats || { total_trades: 0, win_rate: 0, total_pnl: 0 });
+        setHistoryTotalPages(data.pagination?.total_pages ?? 1);
       }
     } catch { /* silent */ }
-  }, [token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, historyPage, historyPageSize]);
 
   useEffect(() => {
     fetchAccount();
@@ -438,6 +464,11 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   <Badge className={p.side === "long" ? "bg-green-900 text-green-300 text-[10px]" : "bg-red-900 text-red-300 text-[10px]"}>{p.side.toUpperCase()}</Badge>
                   <span className="font-mono text-white text-sm">{p.symbol}</span>
                   <span className="text-xs text-zinc-500">{p.volume} lots @ {p.entry_price}</span>
+                  {p.user_label && (
+                    <span className="text-[10px] text-zinc-500 bg-zinc-800 rounded px-1.5 py-0.5 truncate max-w-[120px]">
+                      {ti18n("positions.by")}: {p.user_label}
+                    </span>
+                  )}
                 </div>
                 <span className={`font-mono text-sm font-bold ${pnlColor(p.profit)}`}>
                   {p.profit >= 0 ? "+" : ""}${p.profit.toFixed(2)}
@@ -447,6 +478,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                 <span>SL: {p.stop_loss || "—"}</span>
                 <span>TP: {p.take_profit || "—"}</span>
                 <span>Now: {p.current_price}</span>
+                {p.opened_at && (
+                  <span className="ml-auto tabular-nums">{fmtShortTime(p.opened_at)}</span>
+                )}
               </div>
               <div className="flex gap-2">
                 <button onClick={() => closePos(p.id)} className="px-3 py-1 bg-red-900/50 text-red-300 text-xs rounded hover:bg-red-900 transition-colors">{t.close}</button>
@@ -486,10 +520,18 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           )}
           {pendingOrders.map((o) => (
             <div key={o.id} className="bg-zinc-900 rounded-lg px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Badge className="bg-yellow-900 text-yellow-300 text-[10px]">{o.type}</Badge>
                 <span className="font-mono text-white text-sm">{o.symbol}</span>
                 <span className="text-xs text-zinc-500">{o.volume} @ {o.price}</span>
+                {o.user_label && (
+                  <span className="text-[10px] text-zinc-500 bg-zinc-800 rounded px-1.5 py-0.5 truncate max-w-[120px]">
+                    {ti18n("positions.by")}: {o.user_label}
+                  </span>
+                )}
+                {o.created_at && (
+                  <span className="text-[10px] text-zinc-600 tabular-nums ml-1">{fmtShortTime(o.created_at)}</span>
+                )}
               </div>
               <button onClick={() => cancelOrder(o.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">{t.cancel}</button>
             </div>
@@ -511,26 +553,74 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           )}
           {(() => {
             const showByColumn = tradeHistory.some((d) => d.user_label != null);
-            return tradeHistory.slice(0, 20).map((trade, i) => (
-              <div key={i} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={trade.side === "buy" ? "text-green-500" : "text-red-500"}>{trade.side.toUpperCase()}</span>
-                  <span className="text-zinc-300">{trade.symbol}</span>
-                  <span className="text-zinc-600">{trade.volume} @ {trade.price}</span>
-                  {showByColumn && (
-                    <span className="text-zinc-500 truncate max-w-[80px]">{trade.user_label ?? "—"}</span>
-                  )}
-                </div>
-                <span className={`font-mono font-bold ${pnlColor(trade.profit)}`}>
-                  {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
-                </span>
-              </div>
-            ));
+            const fmtTime = (iso?: string | null) => fmtShortTime(iso) || "—";
+            return (
+              <>
+                {tradeHistory.map((trade, i) => (
+                  <div key={`${trade.id ?? i}-${i}`} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-zinc-600 tabular-nums shrink-0">{fmtTime(trade.time)}</span>
+                      <span className={trade.side === "buy" ? "text-green-500 shrink-0" : "text-red-500 shrink-0"}>{trade.side.toUpperCase()}</span>
+                      <span className="text-zinc-300 shrink-0">{trade.symbol}</span>
+                      <span className="text-zinc-600 shrink-0">{trade.volume} @ {trade.price}</span>
+                      {showByColumn && (
+                        <span className="text-zinc-500 truncate">{trade.user_label ?? "—"}</span>
+                      )}
+                    </div>
+                    <span className={`font-mono font-bold shrink-0 ${pnlColor(trade.profit)}`}>
+                      {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+                {historyStats.total_trades > 0 && (
+                  <div className="pt-2 flex items-center justify-between text-xs text-zinc-500">
+                    <div className="flex items-center gap-2">
+                      <span>{locale === "zh" ? "每页" : "Per page"}</span>
+                      <select
+                        value={historyPageSize}
+                        onChange={(e) => { setHistoryPageSize(Number(e.target.value)); setHistoryPage(1); }}
+                        className="bg-zinc-800 text-zinc-300 rounded px-2 py-1 text-xs focus:outline-none"
+                      >
+                        {[10, 20, 50, 100].map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                        disabled={historyPage <= 1}
+                        className="px-2 py-1 rounded bg-zinc-800 disabled:opacity-40 hover:bg-zinc-700 transition-colors"
+                      >‹</button>
+                      <span className="tabular-nums">
+                        {historyPage} / {historyTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+                        disabled={historyPage >= historyTotalPages}
+                        className="px-2 py-1 rounded bg-zinc-800 disabled:opacity-40 hover:bg-zinc-700 transition-colors"
+                      >›</button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
           })()}
         </div>
       )}
     </div>
   );
+}
+
+function fmtShortTime(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString([], {
+      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
 }
 
 function Stat({ label, value, color = "text-white" }: { label: string; value: string; color?: string }) {

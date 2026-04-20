@@ -4,18 +4,20 @@ import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "../providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { api } from "@/lib/api";
 import { PLANS, type Plan } from "@/lib/pricing";
 
 export default function PricingPage() {
   const { locale } = useI18n();
   const { user } = useAuth();
+  const { openGate } = useLoginGate();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const startCheckout = async (plan: Plan) => {
     if (!user) {
-      window.location.href = `/login?next=${encodeURIComponent("/pricing")}`;
+      openGate(`Log in to upgrade to ${plan}`);
       return;
     }
     setError("");

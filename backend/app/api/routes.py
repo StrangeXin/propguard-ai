@@ -76,6 +76,7 @@ def _position_to_dict(p: PositionDTO, user_label: str | None = None) -> dict:
         "profit": p.unrealized_pnl,
         "stop_loss": p.stop_loss,
         "take_profit": p.take_profit,
+        "opened_at": p.opened_at.isoformat() if p.opened_at else None,
         "user_label": user_label,
     }
 
@@ -90,6 +91,7 @@ def _order_to_dict(o: OrderDTO, user_label: str | None = None) -> dict:
         "price": o.price,
         "stop_loss": o.stop_loss,
         "take_profit": o.take_profit,
+        "created_at": o.created_at.isoformat() if o.created_at else None,
         "user_label": user_label,
     }
 
@@ -106,6 +108,7 @@ def _trade_to_dict(t: ClosedTrade, user_label: str | None = None) -> dict:
         "entry_price": t.entry_price,
         "exit_price": t.exit_price,
         "profit": t.pnl,
+        "time": t.closed_at.isoformat() if t.closed_at else None,
         "user_label": user_label,
     }
 
@@ -157,15 +160,26 @@ def _shared_account_configured() -> bool:
 def _labels_for_positions(owner: Owner, position_ids: list[str]) -> dict:
     """Return {position_id: user_label} for the shared-account read path.
 
-    Accepts a list of position id strings directly.
+    Accepts a list of position id strings directly. Attribution rows are keyed
+    primarily on broker_order_id and only get a broker_position_id backfilled
+    later from history reads, so for currently-open positions we have to query
+    BOTH columns. With many MetaApi brokers market-order position_id ==
+    order_id, so the broker_order_id lookup alone covers the common case.
     Returns empty dict for bound users — they're on their own MetaApi account
     and attribution does not apply. Frontend hides the By column when the map
     is empty AND all positions lack user_label.
     """
     if owner.metaapi_account_id is not None:
         return {}
-    from app.services.attribution import fetch_labels_by_positions
-    return fetch_labels_by_positions([pid for pid in position_ids if pid])
+    from app.services.attribution import fetch_labels_by_positions, fetch_labels_by_orders
+    ids = [pid for pid in position_ids if pid]
+    if not ids:
+        return {}
+    by_position = fetch_labels_by_positions(ids)
+    by_order = fetch_labels_by_orders(ids)
+    # position-id match wins when both present (more specific); order-id fills
+    # the common market-order-where-position_id==order_id case.
+    return {**by_order, **by_position}
 
 
 def _labels_for_orders(owner: Owner, order_ids: list) -> dict:
@@ -837,10 +851,18 @@ async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_use
 
 
 @router.get("/api/trading/history")
-async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
-    """Get closed trade history."""
+async def trading_history(
+    days: int = 30,
+    page: int = 1,
+    page_size: int = 20,
+    owner: Owner = Depends(get_owner),
+):
+    """Get closed trade history, paginated. `page_size` caps at 100."""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
     broker_impl = get_broker(owner)
-    trades_typed = await broker_impl.history(limit=100)
+    # Fetch a wide window once (MetaApi doesn't paginate); slice after sort.
+    trades_typed = await broker_impl.history(limit=1000)
     # Collect order_ids and position_ids separately — attribution rows are
     # keyed by these, NOT by ClosedTrade.id (which is the deal_id).
     order_ids = [t.order_id for t in trades_typed if t.order_id]
@@ -856,6 +878,9 @@ async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
         return None
 
     trades = [_trade_to_dict(t, _label_for(t)) for t in trades_typed]
+    # Sort newest first by closed_at when available — MetaApi returns
+    # chronological (oldest first), but users expect newest on top.
+    trades.sort(key=lambda tr: tr.get("time") or "", reverse=True)
 
     # Lazy backfill: attribution rows with known order_id but missing
     # broker_position_id — set it now if we learned it from this deal.
@@ -872,11 +897,25 @@ async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
             if pos_id:
                 asyncio.create_task(asyncio.to_thread(backfill_position_id, order_id, pos_id))
 
+    # Stats are computed over the full result set, before pagination.
     total = len(trades)
     winners = sum(1 for t in trades if t.get("profit", 0) > 0)
     total_pnl = sum(t.get("profit", 0) for t in trades)
+
+    # Slice to the requested page.
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_trades = trades[start:end]
+    total_pages = max(1, (total + page_size - 1) // page_size)
+
     return {
-        "trades": trades,
+        "trades": page_trades,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+        },
         "stats": {
             "total_trades": total,
             "winning_trades": winners,

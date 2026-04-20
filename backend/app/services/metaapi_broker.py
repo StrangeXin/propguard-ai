@@ -37,6 +37,21 @@ def _to_result(raw: dict) -> OrderResult:
     )
 
 
+def _parse_deal_time(raw) -> datetime:
+    """Parse MetaApi deal time (ISO8601 string or datetime) into aware UTC.
+    Falls back to "now" only if raw is missing/unparsable."""
+    if raw is None or raw == "":
+        return datetime.now(timezone.utc)
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+    try:
+        s = str(raw).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return datetime.now(timezone.utc)
+
+
 class MetaApiBroker:
     """BrokerBase implementation routing through live_trading → MetaApi SDK."""
 
@@ -54,24 +69,30 @@ class MetaApiBroker:
         )
 
     async def positions(self) -> list[PositionDTO]:
+        # live_trading.mt5_get_positions() already normalizes MetaApi's raw
+        # shape (POSITION_TYPE_BUY → "long", openPrice → entry_price, etc.),
+        # so read the normalized field names here, not the raw MetaApi ones.
         raw = await mt5_get_positions() or []
         out: list[PositionDTO] = []
         for p in raw:
+            side_val = p.get("side", "long")
             out.append(PositionDTO(
                 id=str(p.get("id", "")),
                 symbol=str(p.get("symbol", "")),
-                side="long" if p.get("type") == "POSITION_TYPE_BUY" else "short",
+                side=side_val if side_val in ("long", "short") else "long",
                 size=float(p.get("volume", 0)),
-                entry_price=float(p.get("openPrice", 0)),
-                current_price=float(p.get("currentPrice", 0)),
+                entry_price=float(p.get("entry_price", 0)),
+                current_price=float(p.get("current_price", 0)),
                 unrealized_pnl=float(p.get("profit", 0)),
-                stop_loss=float(p["stopLoss"]) if p.get("stopLoss") else None,
-                take_profit=float(p["takeProfit"]) if p.get("takeProfit") else None,
-                opened_at=datetime.now(timezone.utc),
+                stop_loss=float(p["stop_loss"]) if p.get("stop_loss") else None,
+                take_profit=float(p["take_profit"]) if p.get("take_profit") else None,
+                opened_at=_parse_deal_time(p.get("time")),
             ))
         return out
 
     async def pending_orders(self) -> list[OrderDTO]:
+        # mt5_get_orders() passes `type` through raw and renames openPrice→price
+        # and stopLoss→stop_loss / takeProfit→take_profit.
         raw = await mt5_get_orders() or []
         out: list[OrderDTO] = []
         for o in raw:
@@ -82,11 +103,11 @@ class MetaApiBroker:
                 side="buy" if "BUY" in t else "sell",
                 size=float(o.get("volume", 0)),
                 order_type="limit" if "LIMIT" in t else "stop",
-                price=float(o.get("openPrice", 0)),
-                stop_loss=float(o["stopLoss"]) if o.get("stopLoss") else None,
-                take_profit=float(o["takeProfit"]) if o.get("takeProfit") else None,
+                price=float(o.get("price", 0)),
+                stop_loss=float(o["stop_loss"]) if o.get("stop_loss") else None,
+                take_profit=float(o["take_profit"]) if o.get("take_profit") else None,
                 status="pending",
-                created_at=datetime.now(timezone.utc),
+                created_at=_parse_deal_time(o.get("time")),
             ))
         return out
 
@@ -122,6 +143,7 @@ class MetaApiBroker:
         out: list[ClosedTrade] = []
         for d in raw[:limit]:
             try:
+                deal_time = _parse_deal_time(d.get("time"))
                 out.append(ClosedTrade(
                     id=str(d.get("id", "")),
                     symbol=str(d.get("symbol", "")),
@@ -130,8 +152,8 @@ class MetaApiBroker:
                     entry_price=float(d.get("price", 0)),
                     exit_price=float(d.get("price", 0)),
                     pnl=float(d.get("profit", 0)),
-                    opened_at=datetime.now(timezone.utc),
-                    closed_at=datetime.now(timezone.utc),
+                    opened_at=deal_time,
+                    closed_at=deal_time,
                     order_id=str(d.get("orderId")) if d.get("orderId") else None,
                     position_id=str(d.get("positionId")) if d.get("positionId") else None,
                 ))
