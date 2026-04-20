@@ -660,7 +660,7 @@ class ModifyPositionInput(BaseModel):
 
 
 @router.get("/api/trading/account")
-async def trading_account(owner: Owner = Depends(require_user)):
+async def trading_account(owner: Owner = Depends(get_owner)):
     """Get trading account info + positions."""
     broker_impl = get_broker(owner)
     info = await broker_impl.account_info()
@@ -750,7 +750,7 @@ async def trading_pending_order(body: PendingOrderInput, owner: Owner = Depends(
 
 
 @router.get("/api/trading/orders")
-async def trading_orders(owner: Owner = Depends(require_user)):
+async def trading_orders(owner: Owner = Depends(get_owner)):
     """Get all pending orders."""
     broker_impl = get_broker(owner)
     orders = await broker_impl.pending_orders()
@@ -765,7 +765,7 @@ async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_use
 
 
 @router.get("/api/trading/history")
-async def trading_history(days: int = 30, owner: Owner = Depends(require_user)):
+async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
     """Get closed trade history."""
     broker_impl = get_broker(owner)
     trades_typed = await broker_impl.history(limit=100)
@@ -793,7 +793,7 @@ async def trading_symbol_info(symbol: str):
 
 
 @router.get("/api/trading/account-info")
-async def trading_account_info(owner: Owner = Depends(require_user)):
+async def trading_account_info(owner: Owner = Depends(get_owner)):
     """Get full account information."""
     broker_impl = get_broker(owner)
     info = await broker_impl.account_info()
