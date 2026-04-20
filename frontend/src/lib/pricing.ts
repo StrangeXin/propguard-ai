@@ -15,14 +15,14 @@ export const PLANS: PlanConfig[] = [
     price: { en: "$0", zh: "¥0" },
     features: {
       en: [
-        "Sandbox trading ($100,000 simulation)",
+        "Shared MetaApi demo account (real MT5 execution)",
         "20 AI scores / day",
         "100 AI auto-trade ticks / day",
         "3 saved strategies",
         "7-day history retention",
       ],
       zh: [
-        "沙盒交易（$100,000 模拟）",
+        "共享 MetaApi demo 账户（真实 MT5 撮合）",
         "每日 20 次 AI 评分",
         "每日 100 次 AI 自动交易",
         "3 个策略保存",

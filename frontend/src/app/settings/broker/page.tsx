@@ -74,7 +74,7 @@ export default function BrokerSettingsPage() {
       await api("/api/user/broker", { method: "DELETE" });
       setAccountId("");
       setStatus("idle");
-      setMessage("Disconnected — reverted to sandbox mode.");
+      setMessage("Disconnected — reverted to the shared MetaApi demo.");
     } catch {
       setMessage("Failed to disconnect.");
     }
