@@ -16,13 +16,13 @@ export function PlanBanner({ userKind, plan, metaapiAccountId }: Props) {
     return (
       <div className="flex items-center justify-between gap-4 rounded border border-amber-600/50 bg-amber-950/40 px-4 py-2 text-sm">
         <div className="text-amber-200">
-          🔬 Experience mode · Sandbox $100,000 · Data retained 30 days
+          👀 Preview mode · Viewing shared FTMO demo · Sign in to place trades
         </div>
         <Link
           href="/login"
           className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium transition"
         >
-          Register to save →
+          Sign in →
         </Link>
       </div>
     );

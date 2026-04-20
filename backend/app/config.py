@@ -63,7 +63,13 @@ class Settings(BaseSettings):
     # defense if IP rotation bypasses ip_quota.
     anon_daily_cost_ceiling_usd: float = 50.0
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # PR 3b secrets consumed directly via os.getenv() in crypto.py and
+    # owner_resolver.py. Declared here so pydantic accepts them from .env
+    # instead of rejecting as `extra_forbidden`.
+    metaapi_token_enc_key: str = ""
+    ip_hash_salt: str = ""
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 @lru_cache
