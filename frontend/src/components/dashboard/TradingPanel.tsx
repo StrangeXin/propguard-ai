@@ -34,12 +34,13 @@ interface PendingOrder {
 }
 
 interface TradeRecord {
+  id?: string;
   symbol: string;
   side: string;
   volume: number;
   price: number;
   profit: number;
-  time: string;
+  time?: string | null;
   user_label?: string | null;
 }
 
@@ -146,6 +147,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
   const [historyStats, setHistoryStats] = useState<{ total_trades: number; win_rate: number; total_pnl: number }>({ total_trades: 0, win_rate: 0, total_pnl: 0 });
+  const [historyLimit, setHistoryLimit] = useState(100);
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
 
   const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
@@ -235,7 +237,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   // Fetch trade history (anon allowed)
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/trading/history?days=30`, {
+      const res = await fetch(`${API_BASE}/api/trading/history?days=30&limit=${historyLimit}`, {
         headers: readHeaders,
         credentials: "include",
       });
@@ -246,7 +248,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       }
     } catch { /* silent */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, historyLimit]);
 
   useEffect(() => {
     fetchAccount();
@@ -540,21 +542,46 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           )}
           {(() => {
             const showByColumn = tradeHistory.some((d) => d.user_label != null);
-            return tradeHistory.slice(0, 20).map((trade, i) => (
-              <div key={i} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className={trade.side === "buy" ? "text-green-500" : "text-red-500"}>{trade.side.toUpperCase()}</span>
-                  <span className="text-zinc-300">{trade.symbol}</span>
-                  <span className="text-zinc-600">{trade.volume} @ {trade.price}</span>
-                  {showByColumn && (
-                    <span className="text-zinc-500 truncate max-w-[80px]">{trade.user_label ?? "—"}</span>
-                  )}
-                </div>
-                <span className={`font-mono font-bold ${pnlColor(trade.profit)}`}>
-                  {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
-                </span>
-              </div>
-            ));
+            const fmtTime = (iso?: string | null) => {
+              if (!iso) return "—";
+              try {
+                const d = new Date(iso);
+                return d.toLocaleString([], {
+                  month: "2-digit", day: "2-digit",
+                  hour: "2-digit", minute: "2-digit",
+                });
+              } catch { return "—"; }
+            };
+            return (
+              <>
+                {tradeHistory.map((trade, i) => (
+                  <div key={`${trade.id ?? i}-${i}`} className="bg-zinc-900/50 rounded px-4 py-2 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-zinc-600 tabular-nums shrink-0">{fmtTime(trade.time)}</span>
+                      <span className={trade.side === "buy" ? "text-green-500 shrink-0" : "text-red-500 shrink-0"}>{trade.side.toUpperCase()}</span>
+                      <span className="text-zinc-300 shrink-0">{trade.symbol}</span>
+                      <span className="text-zinc-600 shrink-0">{trade.volume} @ {trade.price}</span>
+                      {showByColumn && (
+                        <span className="text-zinc-500 truncate">{trade.user_label ?? "—"}</span>
+                      )}
+                    </div>
+                    <span className={`font-mono font-bold shrink-0 ${pnlColor(trade.profit)}`}>
+                      {trade.profit >= 0 ? "+" : ""}${trade.profit.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+                {tradeHistory.length >= historyLimit && (
+                  <div className="pt-2 text-center">
+                    <button
+                      onClick={() => setHistoryLimit((n) => Math.min(n + 200, 1000))}
+                      className="text-xs text-zinc-500 hover:text-white transition-colors px-3 py-1.5 bg-zinc-800 rounded"
+                    >
+                      {locale === "zh" ? `加载更多（${historyLimit}+）` : `Load more (${historyLimit}+)`}
+                    </button>
+                  </div>
+                )}
+              </>
+            );
           })()}
         </div>
       )}

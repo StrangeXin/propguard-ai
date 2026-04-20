@@ -106,6 +106,7 @@ def _trade_to_dict(t: ClosedTrade, user_label: str | None = None) -> dict:
         "entry_price": t.entry_price,
         "exit_price": t.exit_price,
         "profit": t.pnl,
+        "time": t.closed_at.isoformat() if t.closed_at else None,
         "user_label": user_label,
     }
 
@@ -848,10 +849,13 @@ async def trading_cancel_order(order_id: str, owner: Owner = Depends(require_use
 
 
 @router.get("/api/trading/history")
-async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
-    """Get closed trade history."""
+async def trading_history(
+    days: int = 30, limit: int = 200, owner: Owner = Depends(get_owner),
+):
+    """Get closed trade history. `limit` caps at 1000."""
+    limit = max(1, min(limit, 1000))
     broker_impl = get_broker(owner)
-    trades_typed = await broker_impl.history(limit=100)
+    trades_typed = await broker_impl.history(limit=limit)
     # Collect order_ids and position_ids separately — attribution rows are
     # keyed by these, NOT by ClosedTrade.id (which is the deal_id).
     order_ids = [t.order_id for t in trades_typed if t.order_id]
@@ -867,6 +871,9 @@ async def trading_history(days: int = 30, owner: Owner = Depends(get_owner)):
         return None
 
     trades = [_trade_to_dict(t, _label_for(t)) for t in trades_typed]
+    # Sort newest first by closed_at when available — MetaApi returns
+    # chronological (oldest first), but users expect newest on top.
+    trades.sort(key=lambda tr: tr.get("time") or "", reverse=True)
 
     # Lazy backfill: attribution rows with known order_id but missing
     # broker_position_id — set it now if we learned it from this deal.

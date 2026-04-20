@@ -37,6 +37,21 @@ def _to_result(raw: dict) -> OrderResult:
     )
 
 
+def _parse_deal_time(raw) -> datetime:
+    """Parse MetaApi deal time (ISO8601 string or datetime) into aware UTC.
+    Falls back to "now" only if raw is missing/unparsable."""
+    if raw is None or raw == "":
+        return datetime.now(timezone.utc)
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+    try:
+        s = str(raw).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return datetime.now(timezone.utc)
+
+
 class MetaApiBroker:
     """BrokerBase implementation routing through live_trading → MetaApi SDK."""
 
@@ -128,6 +143,7 @@ class MetaApiBroker:
         out: list[ClosedTrade] = []
         for d in raw[:limit]:
             try:
+                deal_time = _parse_deal_time(d.get("time"))
                 out.append(ClosedTrade(
                     id=str(d.get("id", "")),
                     symbol=str(d.get("symbol", "")),
@@ -136,8 +152,8 @@ class MetaApiBroker:
                     entry_price=float(d.get("price", 0)),
                     exit_price=float(d.get("price", 0)),
                     pnl=float(d.get("profit", 0)),
-                    opened_at=datetime.now(timezone.utc),
-                    closed_at=datetime.now(timezone.utc),
+                    opened_at=deal_time,
+                    closed_at=deal_time,
                     order_id=str(d.get("orderId")) if d.get("orderId") else None,
                     position_id=str(d.get("positionId")) if d.get("positionId") else None,
                 ))
