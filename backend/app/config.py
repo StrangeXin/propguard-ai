@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     alert_threshold_critical: float = 15.0  # 15% remaining
     alert_threshold_danger: float = 5.0  # 5% remaining
 
+    # Per-IP anonymous AI caps (PR 3b T2) — bypass-resistant backstop.
+    ip_quota_ai_trade_tick: int = 500
+    ip_quota_ai_score: int = 100
+
+    # Global anon AI daily cost ceiling in USD (PR 3b T3) — last-resort
+    # defense if IP rotation bypasses ip_quota.
+    anon_daily_cost_ceiling_usd: float = 50.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

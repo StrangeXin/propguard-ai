@@ -594,6 +594,7 @@ async def auth_link_telegram(body: LinkTelegramInput, owner: Owner = Depends(req
 
 class BrokerConnectInput(BaseModel):
     metaapi_account_id: str
+    metaapi_user_token: str  # ownership proof; user-level API token
 
 
 @router.post("/api/user/broker/connect")
@@ -602,37 +603,34 @@ async def user_broker_connect(
 ):
     """Validate + persist a user's MetaApi account binding.
 
-    **Known limitation — no ownership proof.** The MetaApi SDK uses our
-    server's admin token, so `verify_metaapi_account` confirms the account
-    EXISTS but not that the requesting user OWNS it. A malicious user could
-    bind someone else's account ID and see their trades.
-
-    Mitigations deployed with this PR: (a) account IDs are treated as
-    sensitive and not shared across users on our side, (b) the settings
-    page warns users to only input their own ID, (c) bind events are
-    logged for abuse review. Pending for PR 3b: require a user-supplied
-    MetaApi API token or a one-time signed challenge as ownership proof.
+    Ownership proof: the user provides their own MetaApi API token. We use
+    that token (not the server admin token) to fetch the account. If the
+    SDK call succeeds, the user demonstrably controls the token. The
+    token is encrypted at rest (AES-GCM) via app.services.crypto.
     """
     acct_id = body.metaapi_account_id.strip()
+    user_tok = body.metaapi_user_token.strip()
     if not acct_id or len(acct_id) < 20:
         raise HTTPException(400, "Invalid MetaApi account ID format.")
 
-    from app.services.metaapi_admin import verify_metaapi_account
-    ok, message = await verify_metaapi_account(acct_id)
+    from app.services.metaapi_admin import verify_with_user_token
+    ok, message = await verify_with_user_token(acct_id, user_tok)
     if not ok:
         raise HTTPException(400, message)
 
+    from app.services.crypto import encrypt
     from app.services.auth import update_user
-    updated = update_user(owner.id, {"metaapi_account_id": acct_id})
+    updated = update_user(owner.id, {
+        "metaapi_account_id": acct_id,
+        "metaapi_user_token_encrypted": encrypt(user_tok),
+    })
     if not updated:
         raise HTTPException(500, "Failed to save account binding.")
 
-    # Audit log for abuse review (ownership proof is not yet enforced).
-    logger.warning(
-        "metaapi_bind user=%s account=%s",
-        owner.id[:8], acct_id[:8],
-    )
-    return {"success": True, "message": message, "user": updated}
+    logger.info("metaapi_bind_verified user=%s account=%s", owner.id[:8], acct_id[:8])
+    # Never leak the encrypted token in the response.
+    safe_user = {k: v for k, v in updated.items() if k != "metaapi_user_token_encrypted"}
+    return {"success": True, "message": message, "user": safe_user}
 
 
 @router.delete("/api/user/broker")

@@ -123,9 +123,21 @@ def require_quota(action: str):
     Checks and consumes `action` quota for the resolved Owner. On miss raises
     HTTP 402 with a machine-readable detail body: `{code, action, message,
     limit, used, plan, upgrade_url, resets_at}`.
+
+    For anonymous owners, also consults the per-IP daily cap before the
+    per-owner quota. Cookie-rotation alone doesn't bypass the IP cap.
     """
-    def _check(owner: Owner = Depends(get_owner)) -> Owner:
+    from fastapi import Request as _Request
+    from app.services.owner_resolver import _hash_ip
+
+    def _check(request: _Request, owner: Owner = Depends(get_owner)) -> Owner:
         try:
+            # Anonymous users also face an IP-level cap (PR 3b T2).
+            if owner.kind == "anon":
+                from app.services.ip_quota import check_ip
+                ip = request.client.host if request.client else None
+                ip_hash = _hash_ip(ip)
+                check_ip(ip_hash, action)
             check_and_consume(owner, action)
         except QuotaExceeded as e:
             raise HTTPException(
