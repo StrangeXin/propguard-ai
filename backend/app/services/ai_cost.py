@@ -70,10 +70,16 @@ def get_anon_cost_today() -> float:
 
     Used as the global ceiling for anon AI spend (PR 3b T3). Cheap enough
     to call per-request because the table is pruned every 90 days.
+
+    **Fail-closed on DB error** (review I3): if we can't read the ledger,
+    return a conservative high value so the ceiling check blocks further
+    anon AI. Better to 402 some legitimate users than silently burn
+    unlimited Claude budget during a Supabase outage. Paid users are
+    unaffected because they don't hit this code path.
     """
     db = get_db()
     if not db:
-        return 0.0
+        return 999_999.0  # treat "DB unreachable" as ceiling exceeded
     today = datetime.now(timezone.utc).date().isoformat()
     try:
         result = db.table("ai_cost_ledger").select("cost_usd").eq(
@@ -81,4 +87,4 @@ def get_anon_cost_today() -> float:
         return round(sum(float(r["cost_usd"]) for r in (result.data or [])), 6)
     except Exception as e:
         logger.error(f"get_anon_cost_today: {e}")
-        return 0.0
+        return 999_999.0  # fail-closed

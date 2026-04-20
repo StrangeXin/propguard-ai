@@ -27,9 +27,20 @@ ANON_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
 def _hash_ip(ip: str | None) -> str | None:
+    """Deterministic per-deployment hash for IP-based quota bookkeeping.
+
+    Salt from env `IP_HASH_SALT` makes hashes non-portable across deployments
+    so a leaked ip_quota_usage table can't be rainbow-tabled back to IPs
+    without also leaking the salt. Review I2 (PR 3b): without the salt this
+    is just SHA256(ip) — reversible via a precomputed IP→hash table.
+
+    Use only for quota enforcement, NOT as a privacy-preserving identifier.
+    """
     if not ip:
         return None
-    return hashlib.sha256(ip.encode()).hexdigest()[:32]
+    import os
+    salt = os.getenv("IP_HASH_SALT", "propguard-default-salt-change-in-prod")
+    return hashlib.sha256((salt + ":" + ip).encode()).hexdigest()[:32]
 
 
 def _mint_anon(request: Request, response: Response) -> Owner:
