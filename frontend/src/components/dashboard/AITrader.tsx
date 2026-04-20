@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/i18n/context";
 import { useAuth } from "@/app/providers";
+import { useLoginGate } from "@/hooks/useLoginGate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SymbolMultiSelect } from "./SymbolMultiSelect";
@@ -46,8 +47,9 @@ type Any = any;
 export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   firmName: string; accountSize: number; evaluationType?: string; symbol?: string;
 }) {
-  const { locale } = useI18n();
+  const { locale, t: ti18n } = useI18n();
   const { token } = useAuth();
+  const { openGate } = useLoginGate();
   const t = t_[locale] || t_.en;
 
   // Strategy state
@@ -158,6 +160,7 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
 
   // AI Analyze
   const analyzeAndPropose = async () => {
+    if (!token) { openGate(ti18n("auth.login_to_ai_trade")); return; }
     setLoading(true);
     setPendingResult(null);
     try {
@@ -177,6 +180,7 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   };
 
   const confirmExecute = async () => {
+    if (!token) { openGate(ti18n("auth.login_to_ai_trade")); return; }
     if (!pendingResult?.executions?.length) return;
     setExecuting(true);
     try {
@@ -200,6 +204,7 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   };
 
   const startAuto = async () => {
+    if (!token) { openGate(ti18n("auth.login_to_ai_trade")); return; }
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/ai-trade/start`, {
@@ -215,6 +220,7 @@ export function AITrader({ firmName, accountSize, evaluationType, symbol }: {
   };
 
   const stopSession = async (id: string) => {
+    if (!token) { openGate(ti18n("auth.login_to_ai_trade")); return; }
     await fetch(`${API_BASE}/api/ai-trade/stop/${id}`, { method: "POST", headers });
     fetchSessions();
   };
