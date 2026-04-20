@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/i18n/context";
@@ -37,18 +37,10 @@ export function BriefingPanel({
   const { openGate } = useLoginGate();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [authRequired, setAuthRequired] = useState(false);
-
-  // Skip fetch entirely when not logged in
-  useEffect(() => {
-    if (!token) {
-      setAuthRequired(true);
-    }
-  }, [token]);
 
   const generateBriefing = useCallback(async () => {
     if (!token) {
-      setAuthRequired(true);
+      openGate(t("auth.login_to_view_briefing"));
       return;
     }
     setLoading(true);
@@ -58,7 +50,7 @@ export function BriefingPanel({
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (res.status === 401) {
-        setAuthRequired(true);
+        openGate(t("auth.login_to_view_briefing"));
         return;
       }
       const data = await res.json();
@@ -77,20 +69,6 @@ export function BriefingPanel({
     danger: "text-red-400",
     breached: "text-red-300",
   };
-
-  if (authRequired) {
-    return (
-      <div className="bg-zinc-900 rounded-lg p-6 text-center">
-        <p className="text-zinc-400 mb-3">{t("auth.login_to_view_briefing")}</p>
-        <button
-          className="px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-500 text-white"
-          onClick={() => openGate(t("auth.login_to_view_briefing"))}
-        >
-          {t("auth.login")}
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-3">
