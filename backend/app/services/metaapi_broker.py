@@ -54,24 +54,30 @@ class MetaApiBroker:
         )
 
     async def positions(self) -> list[PositionDTO]:
+        # live_trading.mt5_get_positions() already normalizes MetaApi's raw
+        # shape (POSITION_TYPE_BUY → "long", openPrice → entry_price, etc.),
+        # so read the normalized field names here, not the raw MetaApi ones.
         raw = await mt5_get_positions() or []
         out: list[PositionDTO] = []
         for p in raw:
+            side_val = p.get("side", "long")
             out.append(PositionDTO(
                 id=str(p.get("id", "")),
                 symbol=str(p.get("symbol", "")),
-                side="long" if p.get("type") == "POSITION_TYPE_BUY" else "short",
+                side=side_val if side_val in ("long", "short") else "long",
                 size=float(p.get("volume", 0)),
-                entry_price=float(p.get("openPrice", 0)),
-                current_price=float(p.get("currentPrice", 0)),
+                entry_price=float(p.get("entry_price", 0)),
+                current_price=float(p.get("current_price", 0)),
                 unrealized_pnl=float(p.get("profit", 0)),
-                stop_loss=float(p["stopLoss"]) if p.get("stopLoss") else None,
-                take_profit=float(p["takeProfit"]) if p.get("takeProfit") else None,
+                stop_loss=float(p["stop_loss"]) if p.get("stop_loss") else None,
+                take_profit=float(p["take_profit"]) if p.get("take_profit") else None,
                 opened_at=datetime.now(timezone.utc),
             ))
         return out
 
     async def pending_orders(self) -> list[OrderDTO]:
+        # mt5_get_orders() passes `type` through raw and renames openPrice→price
+        # and stopLoss→stop_loss / takeProfit→take_profit.
         raw = await mt5_get_orders() or []
         out: list[OrderDTO] = []
         for o in raw:
@@ -82,9 +88,9 @@ class MetaApiBroker:
                 side="buy" if "BUY" in t else "sell",
                 size=float(o.get("volume", 0)),
                 order_type="limit" if "LIMIT" in t else "stop",
-                price=float(o.get("openPrice", 0)),
-                stop_loss=float(o["stopLoss"]) if o.get("stopLoss") else None,
-                take_profit=float(o["takeProfit"]) if o.get("takeProfit") else None,
+                price=float(o.get("price", 0)),
+                stop_loss=float(o["stop_loss"]) if o.get("stop_loss") else None,
+                take_profit=float(o["take_profit"]) if o.get("take_profit") else None,
                 status="pending",
                 created_at=datetime.now(timezone.utc),
             ))

@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     metaapi_token_enc_key: str = ""
     ip_hash_salt: str = ""
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache
