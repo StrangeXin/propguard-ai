@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     # defense if IP rotation bypasses ip_quota.
     anon_daily_cost_ceiling_usd: float = 50.0
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache
