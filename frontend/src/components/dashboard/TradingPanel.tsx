@@ -330,20 +330,26 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     });
   };
 
-  // Close position — row stays visible with a "closing" state while the
-  // MetaApi round-trip is in flight; refetch removes it on success.
+  // Close position — row shows a "closing" state during the MetaApi
+  // round-trip. On confirmed success we remove it from local state
+  // immediately (no flash where the busy state clears before refetch
+  // catches up), then refetch in the background to reconcile.
   const closePos = async (posId: string) => {
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     markBusy(posId, true);
+    let ok = false;
     try {
       const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
-      if (!res.ok) setMsg("Close failed");
+      ok = res.ok;
+      if (!ok) setMsg("Close failed");
     } catch {
       setMsg("Network error");
-    } finally {
-      markBusy(posId, false);
-      fetchAccount();
     }
+    if (ok && account) {
+      setAccount({ ...account, positions: account.positions.filter((p) => p.id !== posId) });
+    }
+    markBusy(posId, false);
+    fetchAccount();
   };
 
   const partialClose = async (posId: string) => {
@@ -381,15 +387,19 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const cancelOrder = async (orderId: string) => {
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     markBusy(orderId, true);
+    let ok = false;
     try {
       const res = await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
-      if (!res.ok) setMsg("Cancel failed");
+      ok = res.ok;
+      if (!ok) setMsg("Cancel failed");
     } catch {
       setMsg("Network error");
-    } finally {
-      markBusy(orderId, false);
-      fetchOrders();
     }
+    if (ok) {
+      setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
+    }
+    markBusy(orderId, false);
+    fetchOrders();
   };
 
   const pnlColor = (v: number) => v >= 0 ? "text-green-400" : "text-red-400";
