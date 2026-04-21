@@ -271,21 +271,35 @@ async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name:
             try:
                 account_state = await broker.get_account_state(account_id, firm_name, account_size)
 
+                # Mirror the REST fallback: when the partner broker hasn't
+                # synced yet, synthesize a placeholder AccountState so the
+                # client can render rules + zeroed stats instead of spinning
+                # on "connecting to broker..." forever. The client keys off
+                # `account.broker_connected` to show the "not yet connected"
+                # hint if it still matters.
                 if account_state is None:
-                    await websocket.send_text(json.dumps({
-                        "type": "broker_connecting",
-                        "message": "Connecting to broker...",
-                        "metaapi_ready": broker.is_metaapi_ready,
-                        "okx_ready": broker.is_okx_ready,
-                    }))
-                else:
-                    report = evaluate_compliance(account_state, evaluation_type)
-                    payload = json.dumps({
-                        "type": "compliance_update",
-                        "account": account_state.model_dump(),
-                        "compliance": report.model_dump(),
-                    }, default=str)
-                    await websocket.send_text(payload)
+                    from app.models.account import AccountState
+                    account_state = AccountState(
+                        account_id=account_id,
+                        firm_name=firm_name,
+                        account_size=account_size,
+                        initial_balance=float(account_size),
+                        current_balance=float(account_size),
+                        current_equity=float(account_size),
+                        daily_pnl=0,
+                        total_pnl=0,
+                        equity_high_watermark=float(account_size),
+                        broker_connected=False,
+                    )
+
+                report = evaluate_compliance(account_state, evaluation_type)
+                payload = json.dumps({
+                    "type": "compliance_update",
+                    "account": account_state.model_dump(),
+                    "compliance": report.model_dump(),
+                }, default=str)
+                await websocket.send_text(payload)
+                if account_state.broker_connected:
                     await process_compliance_alerts(report)
 
             except WebSocketDisconnect:
