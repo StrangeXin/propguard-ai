@@ -5,6 +5,7 @@ by the broker. Switch to a live account to trade with real money.
 """
 
 import logging
+import time
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -23,39 +24,50 @@ async def get_metaapi_connection(firm_name: str = "ftmo"):
     return None
 
 
+# Cache: symbol → (resolved broker-specific name, negative/positive).
+# MetaApi's get_symbol_price() is a real WS round-trip (can time out on first
+# subscribe), and resolve_symbol() was probing up to 6 variants per call.
+# Front end polls every 5s × multiple symbols → dozens of wasted probes.
+# The resolution answer never changes for a given broker, so a process-
+# lifetime cache is safe.
+_SYMBOL_RESOLVE_CACHE: dict[str, str] = {}
+
+
 async def resolve_symbol(symbol: str, conn=None) -> str:
     """Resolve symbol name for the connected broker.
     FTMO uses .sim suffix (e.g. EURUSD.sim), other brokers use plain names.
+    Cached after the first successful probe.
     """
+    if symbol in _SYMBOL_RESOLVE_CACHE:
+        return _SYMBOL_RESOLVE_CACHE[symbol]
+
     if not conn:
         conn = await get_metaapi_connection()
     if not conn:
         return symbol
 
-    # Try original first
-    try:
-        await conn.get_symbol_price(symbol)
-        return symbol
-    except Exception:
-        pass
-
-    # Try with .sim suffix (FTMO)
-    sim = f"{symbol}.sim"
-    try:
-        await conn.get_symbol_price(sim)
-        return sim
-    except Exception:
-        pass
-
-    # Try with other common suffixes
-    for suffix in [".pro", ".raw", ".m", ".z"]:
+    # Try original first, then common broker-specific suffixes.
+    candidates = [symbol, f"{symbol}.sim", f"{symbol}.pro", f"{symbol}.raw",
+                  f"{symbol}.m", f"{symbol}.z"]
+    for cand in candidates:
         try:
-            await conn.get_symbol_price(f"{symbol}{suffix}")
-            return f"{symbol}{suffix}"
+            await conn.get_symbol_price(cand)
+            _SYMBOL_RESOLVE_CACHE[symbol] = cand
+            return cand
         except Exception:
-            pass
+            continue
 
+    # Couldn't resolve — cache the plain symbol anyway so we don't re-probe
+    # on every request. Next upstream call will fail with a meaningful error
+    # instead of waiting 30s for 6 timeouts in a row.
+    _SYMBOL_RESOLVE_CACHE[symbol] = symbol
     return symbol
+
+
+# Spec cache — specifications (digits, min_volume, etc.) never change at
+# runtime. Cache for 60s so we don't hit MetaApi on every price tick.
+_SYMBOL_SPEC_CACHE: dict[str, tuple[float, dict]] = {}
+_SPEC_TTL_SECONDS = 60.0
 
 
 async def mt5_place_order(
@@ -266,7 +278,13 @@ async def mt5_close_position_partially(position_id: str, volume: float) -> dict:
 
 
 async def mt5_get_symbol_spec(symbol: str) -> dict | None:
-    """Get symbol specification (spread, contract size, min lot, etc.)."""
+    """Get symbol specification (spread, contract size, min lot, etc.).
+    Cached for _SPEC_TTL_SECONDS since MetaApi specs don't change at runtime.
+    """
+    cached = _SYMBOL_SPEC_CACHE.get(symbol)
+    if cached and (time.time() - cached[0]) < _SPEC_TTL_SECONDS:
+        return cached[1]
+
     conn = await get_metaapi_connection()
     if not conn:
         return None
@@ -274,7 +292,7 @@ async def mt5_get_symbol_spec(symbol: str) -> dict | None:
     try:
         resolved = await resolve_symbol(symbol, conn)
         spec = await conn.get_symbol_specification(resolved)
-        return {
+        out = {
             "symbol": spec.get("symbol"),
             "description": spec.get("description", ""),
             "currency": spec.get("currencyProfit", ""),
@@ -286,6 +304,8 @@ async def mt5_get_symbol_spec(symbol: str) -> dict | None:
             "spread": spec.get("spread"),
             "trade_mode": spec.get("tradeMode", ""),
         }
+        _SYMBOL_SPEC_CACHE[symbol] = (time.time(), out)
+        return out
     except Exception as e:
         logger.error(f"MT5 symbol spec failed for {symbol}: {e}")
         return None
