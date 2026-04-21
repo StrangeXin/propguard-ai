@@ -59,6 +59,7 @@ interface SymbolPrice {
   bid: number;
   ask: number;
   spread: number;
+  digits?: number;
 }
 
 import { SymbolSelect } from "./SymbolSelect";
@@ -243,7 +244,12 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       const res = await fetch(`${API_BASE}/api/trading/symbol/${symbol}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.price) setSymbolPrice(data.price);
+        if (data.price) {
+          setSymbolPrice({
+            ...data.price,
+            digits: data.spec?.digits,
+          });
+        }
       }
     } catch { /* silent */ }
   }, [symbol]);
@@ -520,7 +526,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
               <div className="flex flex-col items-center justify-center px-3 bg-zinc-800 text-zinc-400 min-w-[56px]">
                 <span className="text-[9px] uppercase tracking-wider text-zinc-500">{t.spread}</span>
                 <span className="text-xs font-mono tabular-nums">
-                  {symbolPrice ? (symbolPrice.spread * 100000).toFixed(1) : "—"}
+                  {symbolPrice ? formatSpread(symbolPrice.spread, symbolPrice.digits) : "—"}
                 </span>
               </div>
               <button onClick={() => submitOrder("buy")} disabled={loading}
@@ -727,6 +733,22 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       )}
     </div>
   );
+}
+
+function formatSpread(spread: number, digits?: number): string {
+  // Convert to MT5-style "points" using the symbol's digit precision.
+  //   EURUSD (5 digits): spread 0.00004 → 4.0 pts
+  //   USDJPY (3 digits): spread 0.020   → 20.0 pts
+  //   BTCUSD (2 digits): spread 3.00    → 300 pts (displayed as raw price diff,
+  //                                       since "points" means nothing for crypto)
+  if (digits == null) return spread.toFixed(5);
+  if (digits >= 3) {
+    const pts = spread * Math.pow(10, digits);
+    return pts.toFixed(1);
+  }
+  // Low-digit instruments (crypto, indices): show raw price diff; "3" is more
+  // meaningful than "300 pts" for BTC.
+  return spread.toFixed(digits);
 }
 
 function fmtShortTime(iso?: string | null): string {
