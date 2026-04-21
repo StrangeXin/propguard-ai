@@ -1,0 +1,85 @@
+{
+  "firm_name": "The5ers",
+  "version": 1,
+  "effective_date": "2026-04-21",
+  "verified": "Official The5ers Hyper Growth page - verified 2026-04-21",
+  "website": "https://the5ers.com",
+  "description": "Israel-based prop firm founded 2016. Hyper Growth (evaluation), High Stakes, Bootcamp programs. MT5 + cTrader (added 2025, MT4 dropped). 1:30 leverage. $40K evaluation max, scales up to $4M total pool.",
+  "markets": ["forex", "indices", "commodities"],
+  "evaluation_types": ["2-step", "instant"],
+  "default_evaluation": "2-step",
+  "accounts": [
+    { "size": 5000, "currency": "USD" },
+    { "size": 10000, "currency": "USD" },
+    { "size": 20000, "currency": "USD" },
+    { "size": 40000, "currency": "USD" }
+  ],
+  "rules_by_evaluation": {
+    "2-step": [
+      {
+        "type": "profit_target",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "Hyper Growth evaluation target: 10%. Single stage evaluation with continuous criteria — no separate Phase 1/Phase 2."
+      },
+      {
+        "type": "daily_loss",
+        "value": 3,
+        "unit": "percent_of_initial_balance",
+        "description": "3% daily loss cap (lower than industry-standard 5%). Measured from initial balance. Includes floating P/L.",
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 6,
+        "unit": "percent_of_initial_balance",
+        "description": "6% Stop Out Level (strict — not 10% like most competitors). Equity cannot drop below 94% of initial. Static.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "leverage",
+        "value": 30,
+        "unit": "leverage_ratio",
+        "description": "1:30 max leverage (one of the strictest in the industry)."
+      }
+    ],
+    "instant": [
+      {
+        "type": "profit_target",
+        "value": 3,
+        "unit": "percent_of_initial_balance",
+        "description": "Instant Funded: 3% target for first reward, then 3% per scaling round (3-stage cadence)."
+      },
+      {
+        "type": "daily_loss",
+        "value": 5,
+        "unit": "percent_of_initial_balance",
+        "description": "5% daily loss for Instant Funded (higher than 2-step 3%).",
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% static max drawdown for Instant Funded.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      }
+    ]
+  },
+  "profit_split": { "base": 80, "max": 100, "unit": "percent" },
+  "inactivity_policy": {
+    "max_inactive_days": 30,
+    "description": "Account expires after 30 consecutive days of no trading activity."
+  },
+  "sources": [
+    "https://the5ers.com/hyper-growth/ (verified 2026-04-21)",
+    "https://dealpropfirm.com/prop-firms/the5ers",
+    "https://www.forexpropfirms.com/propfirms/the5ers-review"
+  ]
+}

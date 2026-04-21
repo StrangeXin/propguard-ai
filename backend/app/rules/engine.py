@@ -5,7 +5,7 @@ account state against them in real-time.
 
 import json
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 from app.models.account import (
     AccountState,
@@ -14,6 +14,43 @@ from app.models.account import (
     RuleCheckResult,
 )
 from app.config import get_settings
+
+# Freshness thresholds for prop firm rule sets (days since effective_date)
+RULE_FRESHNESS_WARNING_DAYS = 90  # surface as warning above this
+RULE_FRESHNESS_STALE_DAYS = 180   # surface as stale above this
+
+
+def _compute_freshness(effective_date_str: str) -> dict:
+    """Compute freshness metadata for a rule set based on its effective_date.
+
+    Returns dict with: age_days, status ('fresh'|'warning'|'stale'), message.
+    """
+    try:
+        eff = date.fromisoformat(effective_date_str)
+    except (ValueError, TypeError):
+        return {
+            "age_days": None,
+            "status": "unknown",
+            "message": "effective_date missing or malformed — verify on official site.",
+        }
+
+    age = (date.today() - eff).days
+    if age < 0:
+        # effective_date is in the future (pre-dated); treat as fresh
+        return {"age_days": age, "status": "fresh", "message": None}
+    if age <= RULE_FRESHNESS_WARNING_DAYS:
+        return {"age_days": age, "status": "fresh", "message": None}
+    if age <= RULE_FRESHNESS_STALE_DAYS:
+        return {
+            "age_days": age,
+            "status": "warning",
+            "message": f"Rules last verified {age} days ago — double-check the firm's current site before acting on these.",
+        }
+    return {
+        "age_days": age,
+        "status": "stale",
+        "message": f"Rules are {age} days old and may no longer match the firm's current terms. Re-verify before use.",
+    }
 
 # Find rules dir: works both locally (backend/../data) and in Docker (/app/data)
 _engine_dir = Path(__file__).parent  # app/rules/
@@ -48,6 +85,7 @@ def list_available_firms() -> list[dict]:
                 "version": data["version"],
                 "effective_date": data["effective_date"],
                 "account_sizes": [a["size"] for a in data.get("accounts", [])],
+                "freshness": _compute_freshness(data["effective_date"]),
             })
     return firms
 

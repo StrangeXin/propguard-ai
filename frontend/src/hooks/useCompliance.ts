@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { AccountState, ComplianceReport } from "@/lib/types";
+import type { AccountState, ComplianceReport, RuleFreshness } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 const POLL_INTERVAL = 10000; // 10s, reduced from 3s
@@ -17,6 +17,7 @@ interface UseComplianceOptions {
 interface UseComplianceReturn {
   account: AccountState | null;
   compliance: ComplianceReport | null;
+  ruleFreshness: RuleFreshness | null;
   connected: boolean;
   error: string | null;
   reconnecting: boolean;
@@ -33,6 +34,7 @@ export function useCompliance({
   const evalParam = evaluationType ? `&evaluation_type=${evaluationType}` : "";
   const [account, setAccount] = useState<AccountState | null>(null);
   const [compliance, setCompliance] = useState<ComplianceReport | null>(null);
+  const [ruleFreshness, setRuleFreshness] = useState<RuleFreshness | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
@@ -55,6 +57,7 @@ export function useCompliance({
         setReconnecting(false);
         setAccount(data.account);
         setCompliance(data.compliance);
+        if (data.rule_freshness) setRuleFreshness(data.rule_freshness);
       }
     } catch {
       // silent
@@ -109,6 +112,7 @@ export function useCompliance({
               setBrokerConnecting(false);
               setAccount(data.account);
               setCompliance(data.compliance);
+              if (data.rule_freshness) setRuleFreshness(data.rule_freshness);
             } else if (data.type === "broker_connecting") {
               setBrokerConnecting(true);
             }
@@ -144,7 +148,7 @@ export function useCompliance({
     };
   }, [accountId, firmName, accountSize, evaluationType, enabled, fetchRest]);
 
-  return { account, compliance, connected, error, reconnecting, brokerConnecting };
+  return { account, compliance, ruleFreshness, connected, error, reconnecting, brokerConnecting };
 }
 
 export async function fetchFirms() {

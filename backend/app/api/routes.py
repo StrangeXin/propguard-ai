@@ -197,8 +197,11 @@ async def get_firms():
 
 @router.get("/api/firms/{firm_name}/rules")
 async def get_firm_rules(firm_name: str):
-    """Get detailed rules for a specific prop firm."""
+    """Get detailed rules for a specific prop firm. Includes freshness metadata
+    so the UI can surface a warning when rules haven't been re-verified recently."""
+    from app.rules.engine import _compute_freshness
     rules = load_firm_rules(firm_name)
+    rules["freshness"] = _compute_freshness(rules["effective_date"])
     return rules
 
 
@@ -230,11 +233,19 @@ async def get_compliance(account_id: str, firm_name: str, account_size: int, eva
 
         report = evaluate_compliance(account_state, evaluation_type)
 
+        # Thread rule freshness into the response so the dashboard can show a
+        # banner when we're evaluating against rules that haven't been re-verified
+        # recently. effective_date lives on the firm rule set itself.
+        from app.rules.engine import _compute_freshness
+        firm_rules = load_firm_rules(firm_name)
+        freshness = _compute_freshness(firm_rules.get("effective_date", ""))
+
         import json as _json
         return _json.loads(_json.dumps({
             "account": account_state.model_dump(),
             "compliance": report.model_dump(),
             "evaluation_type": evaluation_type or "default",
+            "rule_freshness": freshness,
         }, default=str))
     except Exception as e:
         import traceback

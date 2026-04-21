@@ -1,0 +1,116 @@
+{
+  "firm_name": "FundingPips",
+  "version": 1,
+  "effective_date": "2026-04-21",
+  "verified": "Official FundingPips site + proptradingvibes.com + newyorkcityservers.com - verified 2026-04-21",
+  "website": "https://fundingpips.com",
+  "description": "Dubai-based prop firm founded 2022. FX/CFD focus. Four product variants: 2-Step Standard, 2-Step Pro, 1-Step, and Zero (Instant Funding). MT5 + DxTrade + Match-Trader. Industry-most-generous fee refund (after 4 payouts). Scaling up to $2M + 100% split via Hot Seat tier.",
+  "markets": ["forex", "indices", "commodities", "crypto"],
+  "evaluation_types": ["1-step", "2-step", "instant"],
+  "default_evaluation": "2-step",
+  "accounts": [
+    { "size": 5000, "currency": "USD" },
+    { "size": 10000, "currency": "USD" },
+    { "size": 25000, "currency": "USD" },
+    { "size": 50000, "currency": "USD" },
+    { "size": 100000, "currency": "USD" }
+  ],
+  "rules_by_evaluation": {
+    "2-step": [
+      {
+        "type": "profit_target",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "2-Step Standard (default): Phase 1 target 8%, Phase 2 target 5%. Variant '2-Step Pro' uses 6%+6% with tighter risk."
+      },
+      {
+        "type": "daily_loss",
+        "value": 5,
+        "unit": "percent_of_current_balance",
+        "description": "5% daily loss on 2-Step Standard, calculated on CURRENT balance (not initial). Threshold recalculates as balance changes. 2-Step Pro variant uses 3% daily loss.",
+        "calculation_base": "current_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% static max drawdown on 2-Step Standard. 2-Step Pro variant uses 6% static.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "min_trading_days",
+        "value": 3,
+        "unit": "calendar_days",
+        "description": "Minimum 3 trading days per phase."
+      }
+    ],
+    "1-step": [
+      {
+        "type": "profit_target",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% profit target on 1-Step Challenge."
+      },
+      {
+        "type": "daily_loss",
+        "value": 4,
+        "unit": "percent_of_initial_balance",
+        "description": "4% daily loss limit on 1-Step.",
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 6,
+        "unit": "percent_of_initial_balance",
+        "description": "6% static max drawdown on 1-Step (stricter than 2-Step's 10%).",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "leverage",
+        "value": 50,
+        "unit": "leverage_ratio",
+        "description": "1:50 max leverage on 1-Step (lower than 2-Step's 1:100)."
+      }
+    ],
+    "instant": [
+      {
+        "type": "daily_loss",
+        "value": 3,
+        "unit": "percent_of_current_balance",
+        "description": "3% daily loss limit on Zero (Instant Funding) program.",
+        "calculation_base": "current_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 5,
+        "unit": "percent_of_equity_high_watermark",
+        "description": "5% trailing max drawdown on Zero program. Threshold moves up as account grows.",
+        "trailing": true,
+        "calculation_base": "equity_high_watermark",
+        "breach_action": "account_violation"
+      }
+    ]
+  },
+  "profit_split": { "base": 80, "max": 100, "unit": "percent" },
+  "scaling": {
+    "tiers": ["Launchpad", "Ascender", "Trailblazer", "Hot Seat"],
+    "description": "4 scaling tiers. Launchpad: 20% capital boost. Ascender: 30% + increased drawdown room. Trailblazer: 40% + 13% max DD. Hot Seat: initial balance doubled, 100% split, on-demand rewards, up to $2M total capital."
+  },
+  "fee_refund": {
+    "refund_after_payouts": 4,
+    "description": "Full evaluation fee refunded after the 4th successful payout (industry's most generous refund threshold)."
+  },
+  "sources": [
+    "https://fundingpips.com (verified 2026-04-21)",
+    "https://proptradingvibes.com/prop-firms/fundingpips",
+    "https://proptradingvibes.com/blog/fundingpips-rules",
+    "https://newyorkcityservers.com/blog/fundingpips-review"
+  ]
+}
