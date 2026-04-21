@@ -7,6 +7,214 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 import { SymbolSelect } from "./SymbolSelect";
 
+// klinecharts 10 beta only ships the MA indicator built-in; everything else
+// (VOL, BOLL, MACD, RSI, …) must be registered per-app. We do that once on
+// first chart mount so all instances share the same registry.
+let indicatorsRegistered = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function registerBuiltInIndicators(kc: any) {
+  if (indicatorsRegistered) return;
+  indicatorsRegistered = true;
+
+  // VOL — volume histogram colored by candle direction.
+  kc.registerIndicator({
+    name: "VOL",
+    shortName: "VOL",
+    series: "volume",
+    calcParams: [5, 10, 20],
+    figures: [
+      { key: "ma5", title: "MA5: ", type: "line" },
+      { key: "ma10", title: "MA10: ", type: "line" },
+      { key: "ma20", title: "MA20: ", type: "line" },
+      {
+        key: "volume",
+        title: "VOLUME: ",
+        type: "bar",
+        baseValue: 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        styles: (data: any) => {
+          const k = data.current.kLineData;
+          return {
+            color: k && k.close >= k.open ? "#22c55e" : "#ef4444",
+          };
+        },
+      },
+    ],
+    minValue: 0,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    calc: (dataList: any[], indicator: any) => {
+      const [p5, p10, p20] = indicator.calcParams;
+      const sums: Record<number, number> = { [p5]: 0, [p10]: 0, [p20]: 0 };
+      return dataList.map((k, i) => {
+        const vol = k.volume ?? 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row: any = { volume: vol };
+        [p5, p10, p20].forEach((p) => {
+          sums[p] += vol;
+          if (i >= p) sums[p] -= dataList[i - p].volume ?? 0;
+          if (i >= p - 1) row[`ma${p}`] = sums[p] / p;
+        });
+        return row;
+      });
+    },
+  });
+
+  // MACD — fast EMA − slow EMA + signal EMA; histogram = diff − signal.
+  kc.registerIndicator({
+    name: "MACD",
+    shortName: "MACD",
+    calcParams: [12, 26, 9],
+    figures: [
+      { key: "dif", title: "DIF: ", type: "line" },
+      { key: "dea", title: "DEA: ", type: "line" },
+      {
+        key: "macd", title: "MACD: ", type: "bar", baseValue: 0,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        styles: (data: any) => ({ color: (data.current.indicatorData?.macd ?? 0) >= 0 ? "#22c55e" : "#ef4444" }),
+      },
+    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    calc: (dataList: any[], indicator: any) => {
+      const [fast, slow, signal] = indicator.calcParams;
+      const kFast = 2 / (fast + 1);
+      const kSlow = 2 / (slow + 1);
+      const kSig = 2 / (signal + 1);
+      let emaFast = 0, emaSlow = 0, dea = 0;
+      return dataList.map((k, i) => {
+        const c = k.close;
+        emaFast = i === 0 ? c : c * kFast + emaFast * (1 - kFast);
+        emaSlow = i === 0 ? c : c * kSlow + emaSlow * (1 - kSlow);
+        const dif = emaFast - emaSlow;
+        dea = i === 0 ? dif : dif * kSig + dea * (1 - kSig);
+        return { dif, dea, macd: (dif - dea) * 2 };
+      });
+    },
+  });
+
+  // RSI — standard Wilder (14).
+  kc.registerIndicator({
+    name: "RSI",
+    shortName: "RSI",
+    calcParams: [6, 12, 24],
+    figures: [
+      { key: "rsi1", title: "RSI6: ", type: "line" },
+      { key: "rsi2", title: "RSI12: ", type: "line" },
+      { key: "rsi3", title: "RSI24: ", type: "line" },
+    ],
+    minValue: 0, maxValue: 100,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    calc: (dataList: any[], indicator: any) => {
+      const periods = indicator.calcParams as number[];
+      const gains = periods.map(() => 0);
+      const losses = periods.map(() => 0);
+      const ready = periods.map(() => false);
+      return dataList.map((k, i) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row: any = {};
+        if (i === 0) return row;
+        const diff = k.close - dataList[i - 1].close;
+        const gain = diff > 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+        periods.forEach((p, idx) => {
+          if (i <= p) {
+            gains[idx] += gain;
+            losses[idx] += loss;
+            if (i === p) {
+              gains[idx] /= p; losses[idx] /= p; ready[idx] = true;
+            }
+          } else {
+            gains[idx] = (gains[idx] * (p - 1) + gain) / p;
+            losses[idx] = (losses[idx] * (p - 1) + loss) / p;
+          }
+          if (ready[idx]) {
+            const rs = losses[idx] === 0 ? 100 : gains[idx] / losses[idx];
+            row[`rsi${idx + 1}`] = losses[idx] === 0 ? 100 : 100 - 100 / (1 + rs);
+          }
+        });
+        return row;
+      });
+    },
+  });
+
+  // BOLL — middle = SMA(20), bands = middle ± 2·stdev.
+  kc.registerIndicator({
+    name: "BOLL",
+    shortName: "BOLL",
+    calcParams: [20, 2],
+    figures: [
+      { key: "up", title: "UP: ", type: "line" },
+      { key: "mid", title: "MID: ", type: "line" },
+      { key: "dn", title: "DN: ", type: "line" },
+    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    calc: (dataList: any[], indicator: any) => {
+      const [period, mult] = indicator.calcParams;
+      return dataList.map((_, i) => {
+        if (i < period - 1) return {};
+        const slice = dataList.slice(i - period + 1, i + 1);
+        const mid = slice.reduce((s, x) => s + x.close, 0) / period;
+        const variance = slice.reduce((s, x) => s + (x.close - mid) ** 2, 0) / period;
+        const sd = Math.sqrt(variance);
+        return { up: mid + mult * sd, mid, dn: mid - mult * sd };
+      });
+    },
+  });
+
+  // EMA(5,10,20) overlay on the candle pane.
+  kc.registerIndicator({
+    name: "EMA",
+    shortName: "EMA",
+    calcParams: [5, 10, 20],
+    figures: [
+      { key: "ema1", title: "EMA5: ", type: "line" },
+      { key: "ema2", title: "EMA10: ", type: "line" },
+      { key: "ema3", title: "EMA20: ", type: "line" },
+    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    calc: (dataList: any[], indicator: any) => {
+      const periods = indicator.calcParams as number[];
+      const ks = periods.map((p) => 2 / (p + 1));
+      const prev = periods.map(() => 0);
+      return dataList.map((d, i) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row: any = {};
+        periods.forEach((_p, idx) => {
+          prev[idx] = i === 0 ? d.close : d.close * ks[idx] + prev[idx] * (1 - ks[idx]);
+          row[`ema${idx + 1}`] = prev[idx];
+        });
+        return row;
+      });
+    },
+  });
+
+  // KDJ — stochastic on 9-period range.
+  kc.registerIndicator({
+    name: "KDJ",
+    shortName: "KDJ",
+    calcParams: [9, 3, 3],
+    figures: [
+      { key: "k", title: "K: ", type: "line" },
+      { key: "d", title: "D: ", type: "line" },
+      { key: "j", title: "J: ", type: "line" },
+    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    calc: (dataList: any[], indicator: any) => {
+      const [n, m1, m2] = indicator.calcParams;
+      let K = 50, D = 50;
+      return dataList.map((k, i) => {
+        if (i < n - 1) return {};
+        const slice = dataList.slice(i - n + 1, i + 1);
+        const low = Math.min(...slice.map((x) => x.low));
+        const high = Math.max(...slice.map((x) => x.high));
+        const rsv = high === low ? 50 : ((k.close - low) / (high - low)) * 100;
+        K = (K * (m1 - 1) + rsv) / m1;
+        D = (D * (m2 - 1) + K) / m2;
+        return { k: K, d: D, j: 3 * K - 2 * D };
+      });
+    },
+  });
+}
+
 const PERIODS = [
   { value: "1m", label: "1m", span: 1, type: "minute" as const },
   { value: "5m", label: "5m", span: 5, type: "minute" as const },
@@ -60,6 +268,7 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
 
     async function setup() {
       const kc = await import("klinecharts");
+      await registerBuiltInIndicators(kc);
       if (!mounted || !chartRef.current) return;
 
       // Use type assertion for styles — klinecharts types are strict
