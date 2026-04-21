@@ -8,7 +8,7 @@ Falls back to mock data if API calls fail.
 
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -166,6 +166,7 @@ async def fetch_forex_klines(symbol: str, interval: str, limit: int) -> tuple[li
                     "symbol": td_symbol,
                     "interval": td_interval,
                     "outputsize": str(min(limit, 500)),
+                    "timezone": "UTC",  # force UTC so our parser doesn't guess
                     "apikey": settings.twelvedata_api_key,
                 }
                 async with httpx.AsyncClient(timeout=15) as client:
@@ -176,8 +177,7 @@ async def fetch_forex_klines(symbol: str, interval: str, limit: int) -> tuple[li
                 if data.get("status") == "ok" and data.get("values"):
                     bars = []
                     for v in reversed(data["values"]):  # oldest first
-                        from datetime import datetime as dt
-                        ts = int(dt.strptime(v["datetime"], "%Y-%m-%d %H:%M:%S").timestamp() * 1000) if " " in v["datetime"] else int(dt.strptime(v["datetime"], "%Y-%m-%d").timestamp() * 1000)
+                        ts = _td_datetime_to_utc_ms(v["datetime"])
                         bars.append({
                             "timestamp": ts,
                             "open": float(v["open"]),
@@ -222,6 +222,15 @@ async def fetch_forex_klines(symbol: str, interval: str, limit: int) -> tuple[li
         return None, ""
 
 
+def _td_datetime_to_utc_ms(raw: str) -> int:
+    """Parse a TwelveData `datetime` string (we request timezone=UTC) into
+    an epoch-ms integer anchored on UTC. Avoids the naive-local-time pitfall
+    on servers whose TZ isn't UTC (e.g. Beijing UTC+8)."""
+    from datetime import datetime as dt, timezone as tz
+    fmt = "%Y-%m-%d %H:%M:%S" if " " in raw else "%Y-%m-%d"
+    return int(dt.strptime(raw, fmt).replace(tzinfo=tz.utc).timestamp() * 1000)
+
+
 def _generate_realistic_bars(
     current_price: float, symbol: str, interval: str, count: int
 ) -> list[dict]:
@@ -231,7 +240,9 @@ def _generate_realistic_bars(
         "1h": 60, "4h": 240, "1d": 1440, "1w": 10080,
     }
     mins = period_minutes.get(interval, 60)
-    now = datetime.now()
+    # Anchor the synthesized timestamps on UTC so they match the real-feed
+    # bars' convention regardless of the server's local TZ.
+    now = datetime.now(timezone.utc)
 
     # Forex volatility is much smaller than crypto
     is_forex = current_price < 200
@@ -287,6 +298,7 @@ async def _fetch_twelvedata_direct(symbol: str, interval: str, limit: int) -> tu
             "symbol": symbol,
             "interval": td_interval,
             "outputsize": str(min(limit, 500)),
+            "timezone": "UTC",
             "apikey": settings.twelvedata_api_key,
         }
         async with httpx.AsyncClient(timeout=15) as client:
@@ -297,8 +309,7 @@ async def _fetch_twelvedata_direct(symbol: str, interval: str, limit: int) -> tu
         if data.get("status") == "ok" and data.get("values"):
             bars = []
             for v in reversed(data["values"]):
-                from datetime import datetime as dt
-                ts = int(dt.strptime(v["datetime"], "%Y-%m-%d %H:%M:%S").timestamp() * 1000) if " " in v["datetime"] else int(dt.strptime(v["datetime"], "%Y-%m-%d").timestamp() * 1000)
+                ts = _td_datetime_to_utc_ms(v["datetime"])
                 bars.append({
                     "timestamp": ts,
                     "open": float(v["open"]),
