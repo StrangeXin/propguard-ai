@@ -108,7 +108,29 @@ export function LoginModal() {
             placeholder={mode === "register" ? t("auth.password_register_hint") : t("auth.password")}
             className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white"
           />
-          {err && <p className="text-sm text-red-400">{err}</p>}
+          {err && (
+            <div className="text-sm text-red-400 space-y-1">
+              <p>{err}</p>
+              {mode === "login" && /invalid/i.test(err) && (
+                <button
+                  type="button"
+                  onClick={() => switchMode("register")}
+                  className="text-xs text-blue-400 hover:underline"
+                >
+                  {t("auth.no_account_register_hint")}
+                </button>
+              )}
+              {mode === "register" && /already/i.test(err) && (
+                <button
+                  type="button"
+                  onClick={() => switchMode("login")}
+                  className="text-xs text-blue-400 hover:underline"
+                >
+                  {t("auth.already_registered_login_hint")}
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex gap-2 justify-end pt-1">
             <button
               type="button"
