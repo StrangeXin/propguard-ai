@@ -1,5 +1,5 @@
 """
-Broker value objects shared by MetaApiBroker and SandboxBroker.
+Broker value objects used by MetaApiBroker.
 
 These are the public surface — route handlers and UI-facing JSON shape come
 from these. Keep them frozen + validated so nobody produces malformed state.

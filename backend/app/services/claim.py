@@ -18,15 +18,13 @@ from app.services.database import get_db
 logger = logging.getLogger(__name__)
 
 # Tables that carry (owner_id, owner_kind) per the PR 1 + PR 2a migrations.
+# The sandbox_* tables from the retired SandboxBroker are no longer listed —
+# nothing writes to them after the broker-factory flip to shared MetaApi.
 _OWNER_SCOPED_TABLES = [
     "trading_accounts",
     "signals",
     "alerts",
     "ai_trade_logs",
-    "sandbox_accounts",
-    "sandbox_positions",
-    "sandbox_orders",
-    "sandbox_closed_trades",
     "owner_quota_usage",
     "ai_cost_ledger",
 ]
@@ -45,18 +43,6 @@ def claim_anon_data(anon_id: str, user_id: str) -> dict[str, int]:
 
     for table in _OWNER_SCOPED_TABLES:
         try:
-            # sandbox_accounts has PK on owner_id — one row per owner. If the
-            # user already has an account row (e.g., they previously registered
-            # and came back as anon), UPDATE would violate PK. Delete the anon
-            # row in that case; the user's existing account survives.
-            if table == "sandbox_accounts":
-                existing_user = db.table(table).select("owner_id").eq(
-                    "owner_id", user_id).limit(1).execute()
-                if existing_user.data:
-                    deleted = db.table(table).delete().eq("owner_id", anon_id).execute()
-                    counts[table] = len(deleted.data or [])
-                    continue
-
             result = db.table(table).update({
                 "owner_id": user_id,
                 "owner_kind": "user",

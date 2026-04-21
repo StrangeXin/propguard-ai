@@ -37,9 +37,9 @@ const FIRMS = [
 
 export default function Dashboard() {
   const { t } = useI18n();
-  // Dashboard is public — unauthenticated visitors land on sandbox mode
-  // via the anonymous Owner resolved server-side. PlanBanner tells each
-  // visitor what mode they're in and how to upgrade.
+  // Dashboard is public — unauthenticated visitors land on the shared
+  // MetaApi demo via the anonymous Owner resolved server-side. PlanBanner
+  // tells each visitor what mode they're in and how to upgrade.
   const { user, logout } = useAuth();
   const { openGate } = useLoginGate();
 
@@ -59,7 +59,7 @@ export default function Dashboard() {
   });
 
   // authLoading is only true during initial localStorage check; don't block
-  // unauthenticated visitors (they land on sandbox mode).
+  // unauthenticated visitors (they land on the shared MetaApi demo).
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto space-y-6">

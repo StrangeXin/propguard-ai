@@ -45,7 +45,7 @@ export default function PricingPage() {
       <header className="space-y-3 text-center">
         <h1 className="text-3xl md:text-4xl font-bold">Pricing</h1>
         <p className="text-neutral-400">
-          Start on sandbox for free. Upgrade when you're ready to trade real funds.
+          Start free on the shared MetaApi demo. Upgrade to bind your own account.
         </p>
       </header>
 
