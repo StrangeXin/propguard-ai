@@ -92,6 +92,7 @@ const texts: Record<string, Record<string, string>> = {
     cancel: "Cancel",
     cancelling: "Cancelling…",
     processing: "processing",
+    placing: "Placing…",
     noPositions: "No open positions",
     noOrders: "No pending orders",
     noHistory: "No trade history",
@@ -130,6 +131,7 @@ const texts: Record<string, Record<string, string>> = {
     cancel: "取消",
     cancelling: "撤单中…",
     processing: "处理中",
+    placing: "下单中…",
     noPositions: "暂无持仓",
     noOrders: "暂无挂单",
     noHistory: "暂无交易记录",
@@ -177,7 +179,24 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [tp, setTp] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
+  type Toast = { kind: "success" | "error"; text: string } | null;
+  const [msg, setMsgRaw] = useState<Toast>(null);
+  // Keep the "setMsg" name for backwards compat with existing call sites.
+  const setMsg = (v: string | Toast) => {
+    if (v === null || v === "") { setMsgRaw(null); return; }
+    if (typeof v === "string") {
+      // Heuristic: strings that contain 'fail', 'error', '网络' are errors.
+      const lower = v.toLowerCase();
+      const isErr = /fail|error|invalid|\u7f51\u7edc|\u5931\u8d25/i.test(lower + v);
+      setMsgRaw({ kind: isErr ? "error" : "success", text: v });
+    } else {
+      setMsgRaw(v);
+    }
+    // Auto-clear success toasts after 4s; keep errors until the next action.
+    if (typeof v !== "string" ? v?.kind === "success" : !/fail|error|invalid|\u7f51\u7edc|\u5931\u8d25/i.test(v)) {
+      setTimeout(() => setMsgRaw((cur) => (cur && cur.kind === "success" && cur.text === (typeof v === "string" ? v : v.text) ? null : cur)), 4000);
+    }
+  };
 
   // Modify SL/TP state
   const [editingPos, setEditingPos] = useState<string | null>(null);
@@ -287,7 +306,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       return;
     }
     setLoading(true);
-    setMsg("");
+    setMsg(null);
     try {
       const url = orderType === "market" ? `${API_BASE}/api/trading/order` : `${API_BASE}/api/trading/pending-order`;
       const body: Record<string, unknown> = {
@@ -304,16 +323,19 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
 
       const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
       const data = await res.json();
-      if (data.success) {
-        setMsg(`${side.toUpperCase()} ${symbol} ${size} lots — #${data.order_id || "OK"}`);
+      if (res.ok && data.success) {
+        setMsg({
+          kind: "success",
+          text: `${side.toUpperCase()} ${symbol} ${size} — #${data.order_id || "OK"}`,
+        });
         setSl(""); setTp(""); setLimitPrice("");
         fetchAccount();
         fetchOrders();
       } else {
-        setMsg(data.error || "Order failed");
+        setMsg({ kind: "error", text: data.error || data.detail || "Order failed" });
       }
     } catch {
-      setMsg("Network error");
+      setMsg({ kind: "error", text: "Network error" });
     } finally {
       setLoading(false);
     }
@@ -489,15 +511,29 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
             {/* Buy / Sell buttons */}
             <div className="flex gap-2">
               <button onClick={() => submitOrder("buy")} disabled={loading}
-                className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
-                {t.buy} {symbolPrice ? symbolPrice.ask : ""}
+                className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors flex items-center justify-center gap-2">
+                {loading && <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                {loading ? t.placing : <>{t.buy} {symbolPrice ? symbolPrice.ask : ""}</>}
               </button>
               <button onClick={() => submitOrder("sell")} disabled={loading}
-                className="flex-1 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
-                {t.sell} {symbolPrice ? symbolPrice.bid : ""}
+                className="flex-1 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors flex items-center justify-center gap-2">
+                {loading && <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                {loading ? t.placing : <>{t.sell} {symbolPrice ? symbolPrice.bid : ""}</>}
               </button>
             </div>
-            {msg && <p className="text-xs text-zinc-400">{msg}</p>}
+            {msg && (
+              <div
+                className={`text-xs px-3 py-2 rounded flex items-center gap-2 ${
+                  msg.kind === "success"
+                    ? "bg-green-900/30 border border-green-800/50 text-green-300"
+                    : "bg-red-900/30 border border-red-800/50 text-red-300"
+                }`}
+              >
+                <span>{msg.kind === "success" ? "✓" : "✗"}</span>
+                <span className="flex-1">{msg.text}</span>
+                <button onClick={() => setMsg(null)} className="text-[10px] opacity-60 hover:opacity-100">✕</button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
