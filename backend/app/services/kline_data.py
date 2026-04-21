@@ -34,10 +34,24 @@ BINANCE_INTERVALS = {
     "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w",
 }
 
-# Forex / commodity symbols that need a different source
-FOREX_SYMBOLS = {"EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "USDCHF", "GBPJPY", "EURJPY"}
-COMMODITY_SYMBOLS = {"XAUUSD"}
-INDEX_SYMBOLS = {"NAS100", "US30", "SPX500"}
+# Forex / commodity symbols that need a different source.
+# Cross pairs are included so MetaApi demo instruments (AUDCAD.sim etc.)
+# get real forex quotes instead of falling through to mock $100 bars.
+FOREX_SYMBOLS = {
+    # Majors
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "USDCHF",
+    # JPY crosses
+    "GBPJPY", "EURJPY", "AUDJPY", "CADJPY", "CHFJPY", "NZDJPY",
+    # EUR crosses
+    "EURGBP", "EURAUD", "EURCAD", "EURCHF", "EURNZD",
+    # GBP crosses
+    "GBPAUD", "GBPCAD", "GBPCHF", "GBPNZD",
+    # AUD / NZD / CAD crosses
+    "AUDCAD", "AUDCHF", "AUDNZD",
+    "NZDCAD", "NZDCHF",
+}
+COMMODITY_SYMBOLS = {"XAUUSD", "XAGUSD"}
+INDEX_SYMBOLS = {"NAS100", "US30", "SPX500", "US500"}
 
 
 async def fetch_crypto_klines(symbol: str, interval: str, limit: int) -> list[dict] | None:
@@ -326,7 +340,10 @@ async def get_kline_data(
             return bars, source
 
     # Commodity / index: try Twelve Data first, then estimated
-    commodity_td_map = {"XAUUSD": "XAU/USD", "NAS100": "IXIC", "US30": "DJI", "SPX500": "SPX"}
+    commodity_td_map = {
+        "XAUUSD": "XAU/USD", "XAGUSD": "XAG/USD",
+        "NAS100": "IXIC", "US30": "DJI", "SPX500": "SPX", "US500": "SPX",
+    }
     if sym in commodity_td_map:
         from app.config import get_settings
         if get_settings().twelvedata_api_key:
@@ -337,7 +354,28 @@ async def get_kline_data(
             if bars:
                 return bars, source
 
-    known_prices = {"XAUUSD": 2350, "NAS100": 18500, "US30": 39000, "SPX500": 5200}
+    # Realistic fallback prices for symbols we can't reach via external APIs
+    # (network issues, region block, etc.). Prices are ballpark-correct so the
+    # chart shape is plausible even when we're synthesizing data.
+    known_prices: dict[str, float] = {
+        # Metals / indices
+        "XAUUSD": 3300, "XAGUSD": 40,
+        "NAS100": 19500, "US30": 42000, "SPX500": 5500, "US500": 5500,
+        # Crypto fallbacks (when OKX/Binance unreachable)
+        "BTCUSD": 75000, "BTCUSDT": 75000,
+        "ETHUSD": 3300, "ETHUSDT": 3300,
+        "SOLUSD": 180, "XRPUSD": 2.20, "DOGEUSD": 0.25,
+        "ADAUSD": 0.90, "LINKUSD": 22, "AVAXUSD": 35,
+        # Forex fallbacks (when exchangerate API unreachable)
+        "EURUSD": 1.18, "GBPUSD": 1.28, "USDJPY": 145, "AUDUSD": 0.66,
+        "USDCAD": 1.37, "NZDUSD": 0.60, "USDCHF": 0.85,
+        "GBPJPY": 185, "EURJPY": 170, "AUDJPY": 95, "CADJPY": 105,
+        "CHFJPY": 170, "NZDJPY": 87,
+        "EURGBP": 0.85, "EURAUD": 1.78, "EURCAD": 1.61, "EURCHF": 0.97, "EURNZD": 1.96,
+        "GBPAUD": 1.93, "GBPCAD": 1.75, "GBPCHF": 1.05, "GBPNZD": 2.14,
+        "AUDCAD": 0.90, "AUDCHF": 0.56, "AUDNZD": 1.10,
+        "NZDCAD": 0.82, "NZDCHF": 0.51,
+    }
     if sym in known_prices:
         bars = _generate_realistic_bars(known_prices[sym], sym, period, count)
         return bars, "estimated"

@@ -250,8 +250,23 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
             className="bg-zinc-950"
           />
           {dataSource && (
-            <div className="absolute bottom-2 right-3 text-[10px] text-zinc-600">
-              Data: {dataSource}
+            <div
+              className={`absolute bottom-2 right-3 text-[10px] px-1.5 py-0.5 rounded ${
+                dataSource === "mock"
+                  ? "bg-red-900/60 text-red-200"
+                  : dataSource === "estimated"
+                  ? "bg-amber-900/60 text-amber-200"
+                  : "text-zinc-600"
+              }`}
+              title={
+                dataSource === "mock"
+                  ? "Synthetic data — real market feed unavailable"
+                  : dataSource === "estimated"
+                  ? "Estimated data — external API unreachable, seeded from realistic base price"
+                  : ""
+              }
+            >
+              {dataSource === "mock" ? "⚠ SIM DATA" : dataSource === "estimated" ? "⚠ EST DATA" : `Data: ${dataSource}`}
             </div>
           )}
         </div>
