@@ -413,23 +413,40 @@ def check_trading_hours(
 def check_leverage(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
-    """Check leverage limits per asset."""
+    """Check leverage limits. Supports two rule shapes:
+    1. `value_by_asset`: per-asset cap (e.g. {"EURUSD": 30, "BTCUSD": 2})
+    2. `value` (scalar): single account-wide cap (e.g. 1:30 for all positions)
+    """
     value_by_asset = rule.get("value_by_asset")
-    if not value_by_asset:
+    scalar_max = rule.get("value")
+
+    if not value_by_asset and scalar_max is None:
         return None
 
-    # Check each position against leverage limits
-    violations = []
-    for pos in account.open_positions:
-        symbol = pos.symbol.upper()
-        for asset, max_lev in value_by_asset.items():
-            if asset.upper() in symbol:
-                # Simplified leverage check
-                notional = pos.size * pos.current_price
-                account_equity = account.current_equity
-                effective_leverage = notional / account_equity if account_equity > 0 else 0
-                if effective_leverage > max_lev:
-                    violations.append(f"{symbol}: {effective_leverage:.1f}x (max {max_lev}x)")
+    violations: list[str] = []
+    peak_leverage = 0.0
+
+    if value_by_asset:
+        # Per-asset path
+        for pos in account.open_positions:
+            symbol = pos.symbol.upper()
+            for asset, max_lev in value_by_asset.items():
+                if asset.upper() in symbol:
+                    notional = pos.size * pos.current_price
+                    account_equity = account.current_equity
+                    effective_leverage = notional / account_equity if account_equity > 0 else 0
+                    peak_leverage = max(peak_leverage, effective_leverage)
+                    if effective_leverage > max_lev:
+                        violations.append(f"{symbol}: {effective_leverage:.1f}x (max {max_lev}x)")
+    else:
+        # Scalar path — sum notional across all open positions, compare to equity × cap
+        max_lev = float(scalar_max)
+        total_notional = sum(p.size * p.current_price for p in account.open_positions)
+        account_equity = account.current_equity
+        effective_leverage = total_notional / account_equity if account_equity > 0 else 0
+        peak_leverage = effective_leverage
+        if effective_leverage > max_lev:
+            violations.append(f"account notional {effective_leverage:.1f}x (max {max_lev:.0f}x)")
 
     if violations:
         return RuleCheckResult(
@@ -441,12 +458,53 @@ def check_leverage(
             message=f"Leverage exceeded: {', '.join(violations)}",
         )
 
+    cap_display = scalar_max if scalar_max is not None else "per-asset"
     return RuleCheckResult(
         rule_type="leverage",
         rule_description=rule.get("description", "Leverage limits"),
-        current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
+        current_value=round(peak_leverage, 2),
+        limit_value=float(scalar_max) if scalar_max is not None else 0,
+        remaining=max(float(scalar_max) - peak_leverage, 0) if scalar_max is not None else 999999,
+        remaining_pct=100,
         alert_level=AlertLevel.SAFE,
-        message="All positions within leverage limits.",
+        message=(
+            f"All positions within leverage cap (1:{cap_display})."
+            if not account.open_positions
+            else f"Current leverage {peak_leverage:.1f}x / cap 1:{cap_display}."
+        ),
+    )
+
+
+def check_consistency(
+    account: AccountState, rule: dict, firm_rules: dict
+) -> RuleCheckResult | None:
+    """Consistency rule: e.g. best-day profit cannot exceed X% of total profit,
+    or a minimum number of profitable days. We don't have per-day P&L history
+    server-side, so this is rendered as an informational reminder rather than
+    an active check. If the rule carries a numeric threshold we surface it.
+    """
+    threshold = rule.get("value")
+    unit = rule.get("unit", "")
+    description = rule.get("description") or "Consistency requirement"
+
+    if threshold is None:
+        message = f"Consistency: {description}"
+    elif "profitable_days" in str(unit) or "profitable_days" in description.lower():
+        message = f"Consistency: at least {threshold} profitable day(s) required. Track manually."
+    elif "percent" in str(unit):
+        message = f"Consistency: single-day profits must stay ≤ {threshold}% of total profits."
+    else:
+        message = f"Consistency: {description}"
+
+    return RuleCheckResult(
+        rule_type="consistency",
+        rule_description=description,
+        current_value=0,
+        limit_value=float(threshold) if threshold is not None else 0,
+        remaining=999999,
+        remaining_pct=100,
+        alert_level=AlertLevel.SAFE,
+        message=message,
     )
 
 
@@ -548,7 +606,9 @@ def check_best_day_rule(
     )
 
 
-# Map rule types to checker functions
+# Map rule types to checker functions. `best_day_rule` is a legacy alias kept
+# for FTMO's existing JSON; `consistency` is the schema-canonical name and is
+# used by firms added 2026-04+.
 RULE_CHECKERS = {
     "daily_loss": check_daily_loss,
     "max_drawdown": check_max_drawdown,
@@ -560,6 +620,7 @@ RULE_CHECKERS = {
     "time_limit": check_time_limit,
     "profit_target": check_profit_target,
     "best_day_rule": check_best_day_rule,
+    "consistency": check_consistency,
 }
 
 
