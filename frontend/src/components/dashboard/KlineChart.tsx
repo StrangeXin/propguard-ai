@@ -16,10 +16,20 @@ async function registerBuiltInIndicators(kc: any) {
   if (indicatorsRegistered) return;
   indicatorsRegistered = true;
 
-  // VOL — volume histogram colored by candle direction. Candle direction
-  // is baked into the indicator row (the styles callback only gets the
-  // indicator's own result neighbors, not the raw kline).
-  kc.registerIndicator({
+  // One indicator throwing during registration must not block chart setup
+  // (otherwise the entire canvas stays blank and "chart data is gone"). Wrap
+  // the whole block; failures log and the affected indicator just won't be
+  // available via the toggle.
+  const safeRegister = (def: unknown) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      kc.registerIndicator(def as any);
+    } catch (e) {
+      console.warn("registerIndicator failed:", e);
+    }
+  };
+
+  safeRegister({
     name: "VOL",
     shortName: "VOL",
     series: "volume",
@@ -59,7 +69,7 @@ async function registerBuiltInIndicators(kc: any) {
   });
 
   // MACD — fast EMA − slow EMA + signal EMA; histogram = diff − signal.
-  kc.registerIndicator({
+  safeRegister({
     name: "MACD",
     shortName: "MACD",
     calcParams: [12, 26, 9],
@@ -93,7 +103,7 @@ async function registerBuiltInIndicators(kc: any) {
   });
 
   // RSI — standard Wilder (14).
-  kc.registerIndicator({
+  safeRegister({
     name: "RSI",
     shortName: "RSI",
     calcParams: [6, 12, 24],
@@ -138,7 +148,7 @@ async function registerBuiltInIndicators(kc: any) {
   });
 
   // BOLL — middle = SMA(20), bands = middle ± 2·stdev.
-  kc.registerIndicator({
+  safeRegister({
     name: "BOLL",
     shortName: "BOLL",
     calcParams: [20, 2],
@@ -162,7 +172,7 @@ async function registerBuiltInIndicators(kc: any) {
   });
 
   // EMA(5,10,20) overlay on the candle pane.
-  kc.registerIndicator({
+  safeRegister({
     name: "EMA",
     shortName: "EMA",
     calcParams: [5, 10, 20],
@@ -189,7 +199,7 @@ async function registerBuiltInIndicators(kc: any) {
   });
 
   // KDJ — stochastic on 9-period range.
-  kc.registerIndicator({
+  safeRegister({
     name: "KDJ",
     shortName: "KDJ",
     calcParams: [9, 3, 3],
@@ -341,8 +351,9 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
       chart.setSymbol({ ticker: symbolRef.current });
       chart.setPeriod({ span: p.span, type: p.type });
 
-      // Default indicator
-      chart.createIndicator("VOL");
+      // Default indicator — swallow failures so a broken indicator
+      // registration never blocks the candle render itself.
+      try { chart.createIndicator("VOL"); } catch (e) { console.warn("createIndicator VOL:", e); }
     }
 
     setup();
