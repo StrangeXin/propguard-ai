@@ -59,6 +59,13 @@ interface SymbolPrice {
   bid: number;
   ask: number;
   spread: number;
+  digits?: number;
+}
+
+interface SymbolSpec {
+  min_volume: number;
+  max_volume: number;
+  volume_step: number;
 }
 
 import { SymbolSelect } from "./SymbolSelect";
@@ -92,6 +99,8 @@ const texts: Record<string, Record<string, string>> = {
     cancel: "Cancel",
     cancelling: "Cancelling…",
     processing: "processing",
+    placing: "Placing…",
+    symbolUnavailable: "This symbol is not available on the demo account.",
     noPositions: "No open positions",
     noOrders: "No pending orders",
     noHistory: "No trade history",
@@ -130,6 +139,8 @@ const texts: Record<string, Record<string, string>> = {
     cancel: "取消",
     cancelling: "撤单中…",
     processing: "处理中",
+    placing: "下单中…",
+    symbolUnavailable: "当前账号不支持该品种",
     noPositions: "暂无持仓",
     noOrders: "暂无挂单",
     noHistory: "暂无交易记录",
@@ -144,7 +155,7 @@ const texts: Record<string, Record<string, string>> = {
 
 export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
   const { locale, t: ti18n } = useI18n();
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const { openGate } = useLoginGate();
   const t = texts[locale] || texts.en;
 
@@ -159,6 +170,16 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [historyPageSize, setHistoryPageSize] = useState(20);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
+  const [symbolSpec, setSymbolSpec] = useState<SymbolSpec | null>(null);
+
+  // Called when a mutating request comes back 401 — token either expired or
+  // the server rotated secrets. Clear the stored token, drop user state, and
+  // re-open the login modal so the user can re-auth without seeing the dead
+  // "Authentication required" toast.
+  const handleAuthExpired = () => {
+    logout();
+    openGate(ti18n("auth.session_expired"));
+  };
 
   const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
 
@@ -177,7 +198,24 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [tp, setTp] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
+  type Toast = { kind: "success" | "error"; text: string } | null;
+  const [msg, setMsgRaw] = useState<Toast>(null);
+  // Keep the "setMsg" name for backwards compat with existing call sites.
+  const setMsg = (v: string | Toast) => {
+    if (v === null || v === "") { setMsgRaw(null); return; }
+    if (typeof v === "string") {
+      // Heuristic: strings that contain 'fail', 'error', '网络' are errors.
+      const lower = v.toLowerCase();
+      const isErr = /fail|error|invalid|\u7f51\u7edc|\u5931\u8d25/i.test(lower + v);
+      setMsgRaw({ kind: isErr ? "error" : "success", text: v });
+    } else {
+      setMsgRaw(v);
+    }
+    // Auto-clear success toasts after 4s; keep errors until the next action.
+    if (typeof v !== "string" ? v?.kind === "success" : !/fail|error|invalid|\u7f51\u7edc|\u5931\u8d25/i.test(v)) {
+      setTimeout(() => setMsgRaw((cur) => (cur && cur.kind === "success" && cur.text === (typeof v === "string" ? v : v.text) ? null : cur)), 4000);
+    }
+  };
 
   // Modify SL/TP state
   const [editingPos, setEditingPos] = useState<string | null>(null);
@@ -218,15 +256,48 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Fetch symbol price
+  const [symbolUnavailable, setSymbolUnavailable] = useState(false);
+
+  // Fetch symbol price + spec. Sets unavailable=true when MetaApi returns
+  // {price: null} so we can disable the order buttons instead of silently
+  // letting the user submit with a stale price from a previous symbol.
   const fetchPrice = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/trading/symbol/${symbol}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.price) setSymbolPrice(data.price);
+        if (data.price) {
+          setSymbolPrice({ ...data.price, digits: data.spec?.digits });
+          if (data.spec) {
+            const spec: SymbolSpec = {
+              min_volume: Number(data.spec.min_volume) || 0.01,
+              max_volume: Number(data.spec.max_volume) || 100,
+              volume_step: Number(data.spec.volume_step) || 0.01,
+            };
+            setSymbolSpec((prev) => {
+              // First load for this symbol, or volume_step changed → snap
+              // the size input to a valid value so the user can't submit an
+              // off-step volume (e.g. US500 needs step 0.1, not default 0.01).
+              if (!prev || prev.volume_step !== spec.volume_step || prev.min_volume !== spec.min_volume) {
+                setSize(String(spec.min_volume));
+              }
+              return spec;
+            });
+          }
+          setSymbolUnavailable(false);
+        } else {
+          setSymbolPrice(null);
+          setSymbolSpec(null);
+          setSymbolUnavailable(true);
+        }
+      } else {
+        setSymbolPrice(null);
+        setSymbolSpec(null);
+        setSymbolUnavailable(true);
       }
-    } catch { /* silent */ }
+    } catch {
+      setSymbolPrice(null);
+    }
   }, [symbol]);
 
   // Fetch pending orders (anon allowed)
@@ -264,14 +335,29 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   useEffect(() => {
     fetchAccount();
     fetchAccountInfo();
-    const i1 = setInterval(fetchAccount, 15000); // 15s, not 5s
+    // Account polling at 30s — the compliance hook (useCompliance) polls
+    // every 10s AND keeps a WebSocket for live updates, so account/positions
+    // data is kept fresh by that channel. This interval exists as a belt-
+    // and-suspenders refresh in case WS drops; making it too aggressive just
+    // spams /api/trading/account (which goes to MetaApi and can be slow).
+    const i1 = setInterval(fetchAccount, 30000);
     return () => clearInterval(i1);
   }, [fetchAccount, fetchAccountInfo]);
 
   useEffect(() => {
+    // Symbol changed — clear price + per-symbol inputs. Stale SL/TP/limit
+    // from a different-magnitude symbol (BTC vs EURUSD) would otherwise
+    // produce garbage orders on submit.
     setSymbolPrice(null);
+    setSymbolUnavailable(false);
+    setSl("");
+    setTp("");
+    setLimitPrice("");
+    setMsg(null);
     fetchPrice();
-    const i2 = setInterval(fetchPrice, 10000); // 10s, not 3s
+    // Price poll at 5s — fast enough to keep the BUY/SELL ladder fresh, slow
+    // enough that MetaApi / TwelveData rate-limits don't push back.
+    const i2 = setInterval(fetchPrice, 5000);
     return () => clearInterval(i2);
   }, [fetchPrice]);
 
@@ -286,14 +372,30 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       openGate(ti18n("auth.login_to_place_order"));
       return;
     }
+    // Pre-submit volume validation — catch off-step / out-of-range before
+    // wasting a broker round-trip ("Invalid volume in the request").
+    const vol = parseFloat(size);
+    if (symbolSpec) {
+      const { min_volume, max_volume, volume_step } = symbolSpec;
+      if (isNaN(vol) || vol < min_volume || vol > max_volume) {
+        setMsg({ kind: "error", text: `Size must be between ${min_volume} and ${max_volume}` });
+        return;
+      }
+      // Check multiples of volume_step with an epsilon for float imprecision.
+      const ratio = (vol - min_volume) / volume_step;
+      if (Math.abs(ratio - Math.round(ratio)) > 1e-6) {
+        setMsg({ kind: "error", text: `Size must be a multiple of ${volume_step}` });
+        return;
+      }
+    }
     setLoading(true);
-    setMsg("");
+    setMsg(null);
     try {
       const url = orderType === "market" ? `${API_BASE}/api/trading/order` : `${API_BASE}/api/trading/pending-order`;
       const body: Record<string, unknown> = {
         symbol,
         side,
-        size: parseFloat(size),
+        size: vol,
         stop_loss: sl ? parseFloat(sl) : null,
         take_profit: tp ? parseFloat(tp) : null,
       };
@@ -303,17 +405,25 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       }
 
       const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+      if (res.status === 401) {
+        handleAuthExpired();
+        return;
+      }
       const data = await res.json();
-      if (data.success) {
-        setMsg(`${side.toUpperCase()} ${symbol} ${size} lots — #${data.order_id || "OK"}`);
+      if (res.ok && data.success) {
+        setMsg({
+          kind: "success",
+          text: `${side.toUpperCase()} ${symbol} ${size} — #${data.order_id || "OK"}`,
+        });
         setSl(""); setTp(""); setLimitPrice("");
         fetchAccount();
         fetchOrders();
       } else {
-        setMsg(data.error || "Order failed");
+        const raw = String(data.error || data.detail || "Order failed");
+        setMsg({ kind: "error", text: humanizeBrokerError(raw, vol) });
       }
     } catch {
-      setMsg("Network error");
+      setMsg({ kind: "error", text: "Network error" });
     } finally {
       setLoading(false);
     }
@@ -340,6 +450,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     let ok = false;
     try {
       const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
+      if (res.status === 401) { handleAuthExpired(); markBusy(posId, false); return; }
       ok = res.ok;
       if (!ok) setMsg("Close failed");
     } catch {
@@ -357,7 +468,8 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     if (!partialVol) return;
     markBusy(posId, true);
     try {
-      await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
+      const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
+      if (res.status === 401) { handleAuthExpired(); return; }
     } finally {
       markBusy(posId, false);
       setPartialPos(null);
@@ -370,13 +482,14 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     markBusy(posId, true);
     try {
-      await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
+      const res = await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
         method: "POST", headers,
         body: JSON.stringify({
           stop_loss: editSl ? parseFloat(editSl) : null,
           take_profit: editTp ? parseFloat(editTp) : null,
         }),
       });
+      if (res.status === 401) { handleAuthExpired(); return; }
     } finally {
       markBusy(posId, false);
       setEditingPos(null);
@@ -390,6 +503,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     let ok = false;
     try {
       const res = await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
+      if (res.status === 401) { handleAuthExpired(); markBusy(orderId, false); return; }
       ok = res.ok;
       if (!ok) setMsg("Cancel failed");
     } catch {
@@ -452,23 +566,31 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
               ))}
             </div>
 
-            {/* Symbol + live price */}
+            {/* Symbol */}
             <div className="flex items-center gap-3">
               <SymbolSelect value={symbol} onChange={setSymbol} />
-              {symbolPrice && (
-                <div className="flex gap-3 text-xs">
-                  <span className="text-green-400">{t.bid}: {symbolPrice.bid}</span>
-                  <span className="text-red-400">{t.ask}: {symbolPrice.ask}</span>
-                  <span className="text-zinc-600">{t.spread}: {(symbolPrice.spread * 100000).toFixed(1)}p</span>
-                </div>
-              )}
             </div>
 
             {/* Inputs */}
             <div className={`grid ${orderType === "market" ? "grid-cols-3" : "grid-cols-4"} gap-2`}>
               <div>
-                <label className="text-[10px] text-zinc-500 block mb-1">{t.size}</label>
-                <input type="number" step="0.01" value={size} onChange={(e) => setSize(e.target.value)} className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none" />
+                <label className="text-[10px] text-zinc-500 block mb-1">
+                  {t.size}
+                  {symbolSpec && (
+                    <span className="text-zinc-600 ml-1">
+                      ({symbolSpec.min_volume}–{symbolSpec.max_volume}, step {symbolSpec.volume_step})
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  step={symbolSpec?.volume_step ?? 0.01}
+                  min={symbolSpec?.min_volume ?? 0.01}
+                  max={symbolSpec?.max_volume ?? 100}
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none"
+                />
               </div>
               {orderType !== "market" && (
                 <div>
@@ -486,18 +608,61 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
               </div>
             </div>
 
-            {/* Buy / Sell buttons */}
-            <div className="flex gap-2">
-              <button onClick={() => submitOrder("buy")} disabled={loading}
-                className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
-                {t.buy} {symbolPrice ? symbolPrice.ask : ""}
+            {/* Sell (bid) | spread | Buy (ask) — MT5-style quote ladder */}
+            {symbolUnavailable && (
+              <div className="text-xs px-3 py-2 rounded bg-amber-900/30 border border-amber-800/50 text-amber-300">
+                {t.symbolUnavailable}
+              </div>
+            )}
+            <div className="flex items-stretch gap-0 rounded-lg overflow-hidden">
+              <button onClick={() => submitOrder("sell")} disabled={loading || !symbolPrice}
+                className="flex-1 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
+                {loading ? (
+                  <span className="flex items-center gap-2 py-2">
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span className="text-sm font-bold">{t.placing}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-[10px] uppercase tracking-wider opacity-80">{t.sell} · {t.bid}</span>
+                    <span className="text-lg font-mono font-bold tabular-nums">{symbolPrice ? symbolPrice.bid : "—"}</span>
+                  </>
+                )}
               </button>
-              <button onClick={() => submitOrder("sell")} disabled={loading}
-                className="flex-1 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors">
-                {t.sell} {symbolPrice ? symbolPrice.bid : ""}
+              <div className="flex flex-col items-center justify-center px-3 bg-zinc-800 text-zinc-400 min-w-[56px]">
+                <span className="text-[9px] uppercase tracking-wider text-zinc-500">{t.spread}</span>
+                <span className="text-xs font-mono tabular-nums">
+                  {symbolPrice ? formatSpread(symbolPrice.spread, symbolPrice.digits) : "—"}
+                </span>
+              </div>
+              <button onClick={() => submitOrder("buy")} disabled={loading || !symbolPrice}
+                className="flex-1 py-3 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
+                {loading ? (
+                  <span className="flex items-center gap-2 py-2">
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span className="text-sm font-bold">{t.placing}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-[10px] uppercase tracking-wider opacity-80">{t.buy} · {t.ask}</span>
+                    <span className="text-lg font-mono font-bold tabular-nums">{symbolPrice ? symbolPrice.ask : "—"}</span>
+                  </>
+                )}
               </button>
             </div>
-            {msg && <p className="text-xs text-zinc-400">{msg}</p>}
+            {msg && (
+              <div
+                className={`text-xs px-3 py-2 rounded flex items-center gap-2 ${
+                  msg.kind === "success"
+                    ? "bg-green-900/30 border border-green-800/50 text-green-300"
+                    : "bg-red-900/30 border border-red-800/50 text-red-300"
+                }`}
+              >
+                <span>{msg.kind === "success" ? "✓" : "✗"}</span>
+                <span className="flex-1">{msg.text}</span>
+                <button onClick={() => setMsg(null)} className="text-[10px] opacity-60 hover:opacity-100">✕</button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -674,6 +839,42 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       )}
     </div>
   );
+}
+
+function formatSpread(spread: number, digits?: number): string {
+  // Convert to MT5-style "points" using the symbol's digit precision.
+  //   EURUSD (5 digits): spread 0.00004 → 4.0 pts
+  //   USDJPY (3 digits): spread 0.020   → 20.0 pts
+  //   BTCUSD (2 digits): spread 3.00    → 300 pts (displayed as raw price diff,
+  //                                       since "points" means nothing for crypto)
+  if (digits == null) return spread.toFixed(5);
+  if (digits >= 3) {
+    const pts = spread * Math.pow(10, digits);
+    return pts.toFixed(1);
+  }
+  // Low-digit instruments (crypto, indices): show raw price diff; "3" is more
+  // meaningful than "300 pts" for BTC.
+  return spread.toFixed(digits);
+}
+
+function humanizeBrokerError(raw: string, size: number): string {
+  const s = raw.toLowerCase();
+  if (s.includes("invalid volume")) {
+    return `Broker rejected size ${size}. The account's per-order cap is usually lower than the spec's max_volume; try a smaller size.`;
+  }
+  if (s.includes("not enough money") || s.includes("no money")) {
+    return "Insufficient free margin. Close some positions or reduce the size.";
+  }
+  if (s.includes("market is closed") || s.includes("off quotes")) {
+    return "Market closed for this symbol right now. Try again during session hours.";
+  }
+  if (s.includes("invalid stops")) {
+    return "Stop-loss / take-profit is too close to the current price or on the wrong side.";
+  }
+  if (s.includes("no price")) {
+    return "No price feed for this symbol. Try a different one or refresh.";
+  }
+  return raw;
 }
 
 function fmtShortTime(iso?: string | null): string {

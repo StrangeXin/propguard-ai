@@ -1,0 +1,94 @@
+{
+  "firm_name": "FundedNext",
+  "version": 1,
+  "effective_date": "2026-04-21",
+  "verified": "Official FundedNext website + industry reviews - verified 2026-04-21",
+  "website": "https://fundednext.com",
+  "description": "UAE-based prop firm, Ajman HQ. Stellar 1-Step and 2-Step evaluations. MetaTrader 5 + Match-Trader + cTrader platforms. Fastest payout in industry (avg 5 hours). Scaling up to $4M pool.",
+  "markets": ["forex", "indices", "commodities", "crypto"],
+  "evaluation_types": ["1-step", "2-step"],
+  "default_evaluation": "2-step",
+  "accounts": [
+    { "size": 6000, "currency": "USD" },
+    { "size": 15000, "currency": "USD" },
+    { "size": 25000, "currency": "USD" },
+    { "size": 50000, "currency": "USD" },
+    { "size": 100000, "currency": "USD" },
+    { "size": 200000, "currency": "USD" }
+  ],
+  "rules_by_evaluation": {
+    "1-step": [
+      {
+        "type": "profit_target",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "8% of initial balance. Stellar 1-Step single-phase evaluation."
+      },
+      {
+        "type": "daily_loss",
+        "value": 5,
+        "unit": "percent_of_initial_balance",
+        "description": "5% daily loss limit based on initial balance. Measured from midnight UTC+3 (UAE time). Includes realized + floating P/L.",
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% static max drawdown. Equity cannot drop below 90% of initial balance at any time.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "min_trading_days",
+        "value": 5,
+        "unit": "calendar_days",
+        "description": "5 minimum trading days. At least one position opened per day. Non-consecutive allowed."
+      }
+    ],
+    "2-step": [
+      {
+        "type": "profit_target",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "Phase 1: 8% target. Phase 2 (Verification): 5% target. All positions can remain open across phases."
+      },
+      {
+        "type": "daily_loss",
+        "value": 5,
+        "unit": "percent_of_initial_balance",
+        "description": "5% daily loss limit based on initial balance, both phases.",
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 10,
+        "unit": "percent_of_initial_balance",
+        "description": "10% static max drawdown, both phases. Equity cannot drop below 90% of initial.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "min_trading_days",
+        "value": 5,
+        "unit": "calendar_days",
+        "description": "5 minimum trading days per phase."
+      }
+    ]
+  },
+  "profit_split": { "base": 80, "max": 95, "unit": "percent" },
+  "payout": {
+    "first_payout_days": 21,
+    "subsequent_payout_days": 7,
+    "notes": "21 days for first payout, then every 7 days. Company guarantees payout in 24h or pays $1000 extra."
+  },
+  "sources": [
+    "https://fundednext.com (verified 2026-04-21)",
+    "https://www.dailyforex.com/forex-brokers/fundednext-review",
+    "https://proptradingvibes.com/blog/is-fundednext-legit"
+  ]
+}

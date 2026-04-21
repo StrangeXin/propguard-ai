@@ -52,6 +52,13 @@ export interface ComplianceUpdate {
   type: "compliance_update";
   account: AccountState;
   compliance: ComplianceReport;
+  rule_freshness?: RuleFreshness;
+}
+
+export interface RuleFreshness {
+  age_days: number | null;
+  status: "fresh" | "warning" | "stale" | "unknown";
+  message: string | null;
 }
 
 export interface FirmInfo {
@@ -61,4 +68,5 @@ export interface FirmInfo {
   version: number;
   effective_date: string;
   account_sizes: number[];
+  freshness?: RuleFreshness;
 }

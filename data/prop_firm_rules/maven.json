@@ -1,0 +1,119 @@
+{
+  "firm_name": "Maven",
+  "version": 1,
+  "effective_date": "2026-04-21",
+  "verified": "Official Maven Trading blog + proptradingvibes.com + dealpropfirm.com - verified 2026-04-21",
+  "website": "https://maventrading.com",
+  "description": "Dublin-based FX/CFD prop firm founded 2021. Budget-friendly challenges starting at $13 (for $2K 3-Step). MT5 + cTrader. 2-Step, 1-Step, 3-Step, and Instant Funding programs. No time limits. Fees refundable on 3rd successful withdrawal.",
+  "markets": ["forex", "indices", "commodities", "crypto"],
+  "evaluation_types": ["1-step", "2-step", "instant"],
+  "default_evaluation": "2-step",
+  "accounts": [
+    { "size": 2000, "currency": "USD" },
+    { "size": 5000, "currency": "USD" },
+    { "size": 10000, "currency": "USD" },
+    { "size": 25000, "currency": "USD" },
+    { "size": 50000, "currency": "USD" },
+    { "size": 100000, "currency": "USD" },
+    { "size": 200000, "currency": "USD" }
+  ],
+  "rules_by_evaluation": {
+    "2-step": [
+      {
+        "type": "profit_target",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "Phase 1: 8% target. Phase 2: 5% target. Plus minimum 3 profitable days (each >= 0.5%) per phase."
+      },
+      {
+        "type": "daily_loss",
+        "value": 2,
+        "unit": "percent_of_initial_balance",
+        "description": "2% daily loss (one of the strictest in the industry). Calculated from highest end-of-day balance. Includes floating P/L.",
+        "calculation_base": "highest_eod_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "8% static max drawdown (stricter than the 10% industry standard). Equity cannot drop below 92% of initial.",
+        "trailing": false,
+        "calculation_base": "initial_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "min_trading_days",
+        "value": 3,
+        "unit": "profitable_days",
+        "description": "Minimum 3 profitable days per phase (each day must show >= 0.5% gain). Stricter than just calendar-day counting."
+      }
+    ],
+    "1-step": [
+      {
+        "type": "profit_target",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "8% single-phase evaluation."
+      },
+      {
+        "type": "daily_loss",
+        "value": 4,
+        "unit": "percent_of_initial_balance",
+        "description": "4% daily loss (slightly looser than 2-step's 2%).",
+        "calculation_base": "highest_eod_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "8% max drawdown (trailing or static varies by account type).",
+        "trailing": true,
+        "calculation_base": "equity_high_watermark",
+        "breach_action": "account_violation"
+      }
+    ],
+    "instant": [
+      {
+        "type": "profit_target",
+        "value": 3,
+        "unit": "percent_of_initial_balance",
+        "description": "3% minimum for first payout on Instant Funding. No evaluation phase — pay and trade."
+      },
+      {
+        "type": "daily_loss",
+        "value": 4,
+        "unit": "percent_of_initial_balance",
+        "description": "4% daily loss limit on Instant Funding.",
+        "calculation_base": "highest_eod_balance",
+        "breach_action": "account_violation"
+      },
+      {
+        "type": "max_drawdown",
+        "value": 8,
+        "unit": "percent_of_initial_balance",
+        "description": "8% trailing max drawdown on Instant Funding.",
+        "trailing": true,
+        "calculation_base": "equity_high_watermark",
+        "breach_action": "account_violation"
+      }
+    ]
+  },
+  "profit_split": { "base": 80, "max": 90, "unit": "percent" },
+  "payout": {
+    "cycle_days": 10,
+    "cycle_type": "business_days",
+    "notes": "Payouts every 10 business days."
+  },
+  "fee_refund": {
+    "refund_after_payouts": 3,
+    "description": "Full challenge fee refunded after 3rd successful payout."
+  },
+  "no_time_limit": true,
+  "sources": [
+    "https://maventrading.com/blog/daily-vs-max-drawdown-rules (verified 2026-04-21)",
+    "https://www.proptradingvibes.com/prop-firms/maven",
+    "https://dealpropfirm.com/prop-firms/maven-trading"
+  ]
+}

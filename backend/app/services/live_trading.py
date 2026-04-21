@@ -5,6 +5,7 @@ by the broker. Switch to a live account to trade with real money.
 """
 
 import logging
+import time
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -23,39 +24,47 @@ async def get_metaapi_connection(firm_name: str = "ftmo"):
     return None
 
 
-async def resolve_symbol(symbol: str, conn=None) -> str:
+async def resolve_symbol(symbol: str, conn=None, account_conn=None) -> str:
     """Resolve symbol name for the connected broker.
     FTMO uses .sim suffix (e.g. EURUSD.sim), other brokers use plain names.
+    Cached on the account-level MetaApiConnection wrapper so different
+    broker accounts don't share each other's (wrong) resolutions.
     """
+    # Pull the per-account wrapper from the api broker if caller didn't pass it
+    if account_conn is None:
+        try:
+            from app.api.routes import broker as api_broker
+            account_conn = api_broker._get_connection("ftmo") or api_broker._default_conn
+        except Exception:
+            account_conn = None
+
+    if account_conn is not None and symbol in account_conn.symbol_resolved:
+        return account_conn.symbol_resolved[symbol]
+
     if not conn:
         conn = await get_metaapi_connection()
     if not conn:
         return symbol
 
-    # Try original first
-    try:
-        await conn.get_symbol_price(symbol)
-        return symbol
-    except Exception:
-        pass
-
-    # Try with .sim suffix (FTMO)
-    sim = f"{symbol}.sim"
-    try:
-        await conn.get_symbol_price(sim)
-        return sim
-    except Exception:
-        pass
-
-    # Try with other common suffixes
-    for suffix in [".pro", ".raw", ".m", ".z"]:
+    candidates = [symbol, f"{symbol}.sim", f"{symbol}.pro", f"{symbol}.raw",
+                  f"{symbol}.m", f"{symbol}.z"]
+    for cand in candidates:
         try:
-            await conn.get_symbol_price(f"{symbol}{suffix}")
-            return f"{symbol}{suffix}"
+            await conn.get_symbol_price(cand)
+            if account_conn is not None:
+                account_conn.symbol_resolved[symbol] = cand
+            return cand
         except Exception:
-            pass
+            continue
 
+    # Couldn't resolve — don't poison the cache; next call can re-probe.
     return symbol
+
+
+# Spec cache — specifications (digits, min_volume, etc.) never change at
+# runtime. Cache for 60s so we don't hit MetaApi on every price tick.
+_SYMBOL_SPEC_CACHE: dict[str, tuple[float, dict]] = {}
+_SPEC_TTL_SECONDS = 60.0
 
 
 async def mt5_place_order(
@@ -266,7 +275,13 @@ async def mt5_close_position_partially(position_id: str, volume: float) -> dict:
 
 
 async def mt5_get_symbol_spec(symbol: str) -> dict | None:
-    """Get symbol specification (spread, contract size, min lot, etc.)."""
+    """Get symbol specification (spread, contract size, min lot, etc.).
+    Cached for _SPEC_TTL_SECONDS since MetaApi specs don't change at runtime.
+    """
+    cached = _SYMBOL_SPEC_CACHE.get(symbol)
+    if cached and (time.time() - cached[0]) < _SPEC_TTL_SECONDS:
+        return cached[1]
+
     conn = await get_metaapi_connection()
     if not conn:
         return None
@@ -274,7 +289,7 @@ async def mt5_get_symbol_spec(symbol: str) -> dict | None:
     try:
         resolved = await resolve_symbol(symbol, conn)
         spec = await conn.get_symbol_specification(resolved)
-        return {
+        out = {
             "symbol": spec.get("symbol"),
             "description": spec.get("description", ""),
             "currency": spec.get("currencyProfit", ""),
@@ -286,30 +301,73 @@ async def mt5_get_symbol_spec(symbol: str) -> dict | None:
             "spread": spec.get("spread"),
             "trade_mode": spec.get("tradeMode", ""),
         }
+        _SYMBOL_SPEC_CACHE[symbol] = (time.time(), out)
+        return out
     except Exception as e:
         logger.error(f"MT5 symbol spec failed for {symbol}: {e}")
         return None
 
 
+# Short-TTL price cache + in-flight deduplication.
+# Multiple concurrent clients polling /api/trading/symbol/BTCUSD at the same
+# instant will share a single MetaApi round-trip instead of stacking them up.
+# 1.5s is tight enough that bid/ask still feels live (< one polling interval)
+# but loose enough to cut N redundant requests to 1.
+import asyncio as _asyncio
+import time as _time
+
+_PRICE_CACHE: dict[str, tuple[float, dict]] = {}
+_PRICE_INFLIGHT: dict[str, _asyncio.Future] = {}
+_PRICE_TTL_SECONDS = 1.5
+
+
 async def mt5_get_symbol_price(symbol: str) -> dict | None:
-    """Get real-time bid/ask price for a symbol."""
-    conn = await get_metaapi_connection()
-    if not conn:
-        return None
+    """Get real-time bid/ask price for a symbol.
+
+    Uses a 1.5s in-memory cache with single-flight deduplication — if 10
+    clients ask for BTCUSD within 1.5s, only the first one actually hits
+    MetaApi; the other nine await the same future and get the same answer.
+    """
+    cached = _PRICE_CACHE.get(symbol)
+    if cached and (_time.time() - cached[0]) < _PRICE_TTL_SECONDS:
+        return cached[1]
+
+    # Single-flight: if a fetch is already in flight for this symbol, wait
+    # for it instead of firing a second one.
+    inflight = _PRICE_INFLIGHT.get(symbol)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            return None
+
+    loop = _asyncio.get_event_loop()
+    fut: _asyncio.Future = loop.create_future()
+    _PRICE_INFLIGHT[symbol] = fut
 
     try:
+        conn = await get_metaapi_connection()
+        if not conn:
+            fut.set_result(None)
+            return None
         resolved = await resolve_symbol(symbol, conn)
-        price = await conn.get_symbol_price(resolved)
-        return {
-            "symbol": price.get("symbol"),
-            "bid": price.get("bid"),
-            "ask": price.get("ask"),
-            "time": price.get("time"),
-            "spread": round(price.get("ask", 0) - price.get("bid", 0), 6),
+        raw = await conn.get_symbol_price(resolved)
+        out = {
+            "symbol": raw.get("symbol"),
+            "bid": raw.get("bid"),
+            "ask": raw.get("ask"),
+            "time": raw.get("time"),
+            "spread": round(raw.get("ask", 0) - raw.get("bid", 0), 6),
         }
+        _PRICE_CACHE[symbol] = (_time.time(), out)
+        fut.set_result(out)
+        return out
     except Exception as e:
         logger.error(f"MT5 price failed for {symbol}: {e}")
+        fut.set_result(None)
         return None
+    finally:
+        _PRICE_INFLIGHT.pop(symbol, None)
 
 
 async def mt5_get_trade_history(days: int = 30) -> list[dict]:

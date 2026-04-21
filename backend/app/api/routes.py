@@ -197,8 +197,11 @@ async def get_firms():
 
 @router.get("/api/firms/{firm_name}/rules")
 async def get_firm_rules(firm_name: str):
-    """Get detailed rules for a specific prop firm."""
+    """Get detailed rules for a specific prop firm. Includes freshness metadata
+    so the UI can surface a warning when rules haven't been re-verified recently."""
+    from app.rules.engine import _compute_freshness
     rules = load_firm_rules(firm_name)
+    rules["freshness"] = _compute_freshness(rules["effective_date"])
     return rules
 
 
@@ -230,11 +233,19 @@ async def get_compliance(account_id: str, firm_name: str, account_size: int, eva
 
         report = evaluate_compliance(account_state, evaluation_type)
 
+        # Thread rule freshness into the response so the dashboard can show a
+        # banner when we're evaluating against rules that haven't been re-verified
+        # recently. effective_date lives on the firm rule set itself.
+        from app.rules.engine import _compute_freshness
+        firm_rules = load_firm_rules(firm_name)
+        freshness = _compute_freshness(firm_rules.get("effective_date", ""))
+
         import json as _json
         return _json.loads(_json.dumps({
             "account": account_state.model_dump(),
             "compliance": report.model_dump(),
             "evaluation_type": evaluation_type or "default",
+            "rule_freshness": freshness,
         }, default=str))
     except Exception as e:
         import traceback
@@ -271,21 +282,35 @@ async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name:
             try:
                 account_state = await broker.get_account_state(account_id, firm_name, account_size)
 
+                # Mirror the REST fallback: when the partner broker hasn't
+                # synced yet, synthesize a placeholder AccountState so the
+                # client can render rules + zeroed stats instead of spinning
+                # on "connecting to broker..." forever. The client keys off
+                # `account.broker_connected` to show the "not yet connected"
+                # hint if it still matters.
                 if account_state is None:
-                    await websocket.send_text(json.dumps({
-                        "type": "broker_connecting",
-                        "message": "Connecting to broker...",
-                        "metaapi_ready": broker.is_metaapi_ready,
-                        "okx_ready": broker.is_okx_ready,
-                    }))
-                else:
-                    report = evaluate_compliance(account_state, evaluation_type)
-                    payload = json.dumps({
-                        "type": "compliance_update",
-                        "account": account_state.model_dump(),
-                        "compliance": report.model_dump(),
-                    }, default=str)
-                    await websocket.send_text(payload)
+                    from app.models.account import AccountState
+                    account_state = AccountState(
+                        account_id=account_id,
+                        firm_name=firm_name,
+                        account_size=account_size,
+                        initial_balance=float(account_size),
+                        current_balance=float(account_size),
+                        current_equity=float(account_size),
+                        daily_pnl=0,
+                        total_pnl=0,
+                        equity_high_watermark=float(account_size),
+                        broker_connected=False,
+                    )
+
+                report = evaluate_compliance(account_state, evaluation_type)
+                payload = json.dumps({
+                    "type": "compliance_update",
+                    "account": account_state.model_dump(),
+                    "compliance": report.model_dump(),
+                }, default=str)
+                await websocket.send_text(payload)
+                if account_state.broker_connected:
                     await process_compliance_alerts(report)
 
             except WebSocketDisconnect:

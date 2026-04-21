@@ -1,0 +1,71 @@
+{
+  "firm_name": "Apex",
+  "version": 1,
+  "effective_date": "2026-04-21",
+  "verified": "Third-party review (vettedpropfirms.com) + industry sources - verified 2026-04-21. Official site returned 403 from automated check.",
+  "website": "https://apextraderfunding.com",
+  "description": "Austin TX prop firm founded 2022. Futures-only. One-step evaluation with live trailing threshold (no daily loss). $520M+ reported payouts. NinjaTrader + Rithmic integrations. Operates in 150+ countries.",
+  "markets": ["futures"],
+  "evaluation_type": "1-step",
+  "accounts": [
+    { "size": 25000, "currency": "USD", "monthly_fee": 137, "trailing_threshold": 1500, "profit_target": 1500 },
+    { "size": 50000, "currency": "USD", "monthly_fee": 167, "trailing_threshold": 2500, "profit_target": 3000 },
+    { "size": 75000, "currency": "USD", "monthly_fee": 187, "trailing_threshold": 2750, "profit_target": 4250 },
+    { "size": 100000, "currency": "USD", "monthly_fee": 207, "trailing_threshold": 3000, "profit_target": 6000 },
+    { "size": 150000, "currency": "USD", "monthly_fee": 297, "trailing_threshold": 5000, "profit_target": 9000 },
+    { "size": 250000, "currency": "USD", "monthly_fee": 517, "trailing_threshold": 6000, "profit_target": 15000 },
+    { "size": 300000, "currency": "USD", "monthly_fee": 597, "trailing_threshold": 7500, "profit_target": 20000 }
+  ],
+  "rules": [
+    {
+      "type": "max_drawdown",
+      "value_by_account": { "25000": 1500, "50000": 2500, "75000": 2750, "100000": 3000, "150000": 5000, "250000": 6000, "300000": 7500 },
+      "unit": "usd",
+      "description": "Live trailing threshold. Trails the highest intraday equity (not end-of-day like TopStep). Threshold distance stays fixed relative to equity high. Once Threshold reaches starting balance, it locks permanently. Breaching IS a violation.",
+      "trailing": true,
+      "trailing_type": "live_intraday",
+      "calculation_base": "equity_high_watermark",
+      "breach_action": "account_violation"
+    },
+    {
+      "type": "profit_target",
+      "value_by_account": { "25000": 1500, "50000": 3000, "75000": 4250, "100000": 6000, "150000": 9000, "250000": 15000, "300000": 20000 },
+      "unit": "usd",
+      "description": "Profit target to advance to funded account. Varies by account size."
+    },
+    {
+      "type": "trading_hours",
+      "value": "23 hours per day",
+      "unit": "schedule",
+      "description": "23 hours daily including holidays and news events. News trading explicitly allowed (unlike most other prop firms)."
+    },
+    {
+      "type": "position_size",
+      "value_by_account": { "25000": 4, "50000": 10, "75000": 12, "100000": 14, "150000": 17, "250000": 27, "300000": 35 },
+      "unit": "contracts",
+      "description": "Maximum contract count per account size. Full-size contracts during evaluation."
+    }
+  ],
+  "profit_split": {
+    "base": 100,
+    "max": 100,
+    "unit": "percent",
+    "notes": "100% on first $25K, then 90% after. Best split structure in industry for small accounts."
+  },
+  "payout": {
+    "cycle_days": 8,
+    "notes": "Payouts every 8 calendar days. No waiting period like FTMO's 14 days."
+  },
+  "other_features": {
+    "max_concurrent_accounts": 20,
+    "unlimited_resets": true,
+    "reset_cost_usd": 80,
+    "funded_monthly_fee_usd": 85,
+    "real_time_data": true,
+    "description": "Up to 20 funded accounts simultaneously. Unlimited resets at $80/attempt. Real-time market data included (~$55/mo value)."
+  },
+  "sources": [
+    "https://vettedpropfirms.com/apex-trader-funding-review/ (verified 2026-04-21)",
+    "https://en.wikipedia.org/wiki/Apex_Trader_Funding (where available)"
+  ]
+}

@@ -21,6 +21,22 @@ const docs: Record<string, Record<string, string>> = {
     signalDesc: "Don't produce signals, filter them. Help you find the one worth acting on from the noise.",
     architectureTitle: "Architecture",
     firmsTitle: "Supported Prop Firms",
+    rulesGuideTitle: "Understanding Your Compliance Cards",
+    rulesGuideIntro: "Your compliance dashboard shows one card per active rule. Here is what each rule type means and why the distinction matters.",
+    ruleDailyLossTitle: "Daily Loss",
+    ruleDailyLossDesc: "A per-session loss cap. Breach it and you either (a) fail the challenge outright or (b) have your positions auto-liquidated until the next session. Reset time varies by firm — FTMO resets at 00:00 CET, TopStep at 17:00 CT. The dollar floor moves every day based on the previous day's closing balance.",
+    ruleMaxDrawdownTitle: "Max Drawdown (static vs trailing)",
+    ruleMaxDrawdownDesc: "A lifetime-of-account equity floor. Static drawdown locks the floor at a fixed dollar amount from initial balance (FTMO 2-Step: 10% below start, forever). Trailing drawdown moves the floor up as your equity grows — TopStep and Apex both use end-of-day trailing, meaning the floor shifts at session close, not intraday.",
+    ruleBestDayTitle: "Consistency / Best-Day Rule",
+    ruleBestDayDesc: "Your single best profit day cannot exceed 50% of total profits. Not a hard breach — you simply can't pass the challenge until the rule is satisfied. Prevents 'lucky single-day' accounts from graduating. FTMO, TopStep, Maven all enforce this.",
+    ruleMinDaysTitle: "Minimum Trading Days",
+    ruleMinDaysDesc: "At least N calendar days with at least one trade each. FTMO requires 4, FundedNext 5, Maven 3 profitable days per phase. Meant to prevent all-in-one-day gambling from passing.",
+    ruleTimeLimitTitle: "Time Limit",
+    ruleTimeLimitDesc: "Maximum days to hit profit target. FTMO removed time limits in 2024 — so did FundedNext, The5ers, Maven, FundingPips. TopStep and Apex never had them. Some legacy firms still enforce 30 days.",
+    ruleLeverageTitle: "Leverage / Position Size",
+    ruleLeverageDesc: "Per-firm caps on how much notional exposure you can carry. The5ers is strictest (1:30). FTMO sits at 1:100 for FX. Apex caps absolute contract count by account size instead.",
+    freshnessBannerTitle: "Why You See a Yellow or Red Banner",
+    freshnessBannerDesc: "Rules change. Firms tighten drawdowns, switch to trailing, add consistency rules, remove time limits. We stamp each rule set with the date it was last re-verified against the firm's official page. If the stamp is older than 90 days, we show an amber warning above your compliance grid. Older than 180 days, we show red.",
     apiTitle: "API Endpoints",
     pricingTitle: "Pricing",
     quickstartTitle: "Quick Start",
@@ -43,6 +59,22 @@ const docs: Record<string, Record<string, string>> = {
     signalDesc: "不生产信号，过滤信号。帮你从噪音中找到值得行动的那一个。",
     architectureTitle: "技术架构",
     firmsTitle: "支持的 Prop Firm",
+    rulesGuideTitle: "看懂你的合规卡",
+    rulesGuideIntro: "合规面板每条规则对应一张卡。下面解释每种规则的含义和关键区别。",
+    ruleDailyLossTitle: "每日亏损 (Daily Loss)",
+    ruleDailyLossDesc: "单日亏损上限。突破后要么直接挑战失败，要么强平所有持仓等下个 session。重置时间每家不同 —— FTMO 是 CET 00:00，TopStep 是 CT 17:00。每天的美元地板根据前一天收盘余额动态调整。",
+    ruleMaxDrawdownTitle: "最大回撤 (static vs trailing)",
+    ruleMaxDrawdownDesc: "账户生命周期的权益地板。Static 固定在初始余额下方某个固定美元数（FTMO 2-Step：10% 下方，永远不变）。Trailing 随着权益新高往上移 —— TopStep 和 Apex 用 EOD trailing，意思是地板在 session 收盘时才移动，盘中不动。",
+    ruleBestDayTitle: "一致性 / 最佳日规则",
+    ruleBestDayDesc: "单日最大盈利不能超过总利润的 50%。这不是硬违规 —— 只是规则满足之前你无法过关。目的是防止'运气好单日大赚'的账户毕业。FTMO、TopStep、Maven 都有此规则。",
+    ruleMinDaysTitle: "最低交易天数",
+    ruleMinDaysDesc: "至少 N 天自然日各有至少一笔交易。FTMO 要求 4，FundedNext 5，Maven 要求 3 个盈利日/phase（更严）。目的是防止「一天梭哈」式过关。",
+    ruleTimeLimitTitle: "时间限制",
+    ruleTimeLimitDesc: "达到利润目标的最长天数。FTMO 2024 年取消时间限制 —— FundedNext、The5ers、Maven、FundingPips 也都取消了。TopStep 和 Apex 从来没有。少数老牌 prop 还在用 30 天限制。",
+    ruleLeverageTitle: "杠杆 / 仓位大小",
+    ruleLeverageDesc: "每家对名义敞口的上限。The5ers 最严 (1:30)。FTMO 外汇 1:100。Apex 不按杠杆而按绝对合约数量限制。",
+    freshnessBannerTitle: "为什么看到黄色或红色横幅",
+    freshnessBannerDesc: "规则会变。公司会收紧回撤、改成 trailing、加一致性规则、取消时间限制。我们给每套规则打上「最后核对日期」。如果超过 90 天没核对，合规表格上方会显示琥珀色警告。超过 180 天，显示红色。",
     apiTitle: "API 端点",
     pricingTitle: "定价",
     quickstartTitle: "快速开始",
@@ -158,7 +190,7 @@ export default function DocsPage() {
 │                   Backend                         │
 │              Python FastAPI                       │
 │                                                   │
-│  Rule Engine ← JSON Rules (FTMO/TopStep/CryptoFundTrader)│
+│  Rule Engine ← JSON Rules (8 firms, freshness-aware)     │
 │  Signal Parser ← Telegram Bot / TradingView Hook │
 │  AI Scorer ← Claude API (Haiku) + Rule Fallback  │
 │  Alert Service → Telegram Bot API                │
@@ -188,27 +220,79 @@ export default function DocsPage() {
               <tbody className="text-zinc-300">
                 <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">FTMO</td>
-                  <td className="py-3 pr-4">外汇 / 指数 / 加密 / 外汇</td>
-                  <td className="py-3 pr-4">5%</td>
-                  <td className="py-3 pr-4">10% (静态)</td>
-                  <td className="py-3 text-zinc-400">新闻交易限制, 4 天最低</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">5% (2-step) / 3% (1-step)</td>
+                  <td className="py-3 pr-4">10% (static 2-step) / 10% trailing (1-step)</td>
+                  <td className="py-3 text-zinc-400">新闻交易限制, 4 天最低, 无时间限制</td>
                 </tr>
                 <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">TopStep</td>
                   <td className="py-3 pr-4">期货</td>
-                  <td className="py-3 pr-4">2% ($1K-3K)</td>
-                  <td className="py-3 pr-4">3-4% (追踪)</td>
-                  <td className="py-3 text-zinc-400">追踪回撤, 合约数限制</td>
+                  <td className="py-3 pr-4">$1K-3K (Classic) / 无 (TopstepX)</td>
+                  <td className="py-3 pr-4">EOD 追踪</td>
+                  <td className="py-3 text-zinc-400">合约数限制, 一致性规则</td>
                 </tr>
-                <tr>
+                <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">CryptoFundTrader</td>
                   <td className="py-3 pr-4">加密 / 外汇</td>
-                  <td className="py-3 pr-4">无</td>
+                  <td className="py-3 pr-4">4-5%</td>
+                  <td className="py-3 pr-4">6% (Instant) / 10% (2-phase)</td>
+                  <td className="py-3 text-zinc-400">Bybit 直连, MT5 / Match-Trader</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">FundedNext</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">5%</td>
                   <td className="py-3 pr-4">10% (静态)</td>
-                  <td className="py-3 text-zinc-400">无时间限制, MT5 / Bybit</td>
+                  <td className="py-3 text-zinc-400">无时间限制, 最高 95% 分成, MT5 / Match-Trader / cTrader</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">The5ers</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品</td>
+                  <td className="py-3 pr-4">3% (严格)</td>
+                  <td className="py-3 pr-4">6% Stop Out (严格)</td>
+                  <td className="py-3 text-zinc-400">1:30 杠杆上限, 无最低交易天数, cTrader / MT5</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">Apex</td>
+                  <td className="py-3 pr-4">期货</td>
+                  <td className="py-3 pr-4">无</td>
+                  <td className="py-3 pr-4">Live trailing (按账户浮动)</td>
+                  <td className="py-3 text-zinc-400">100% 首 $25K 分成, 8 天 payout, 新闻允许</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">Maven</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">2% (极严) / 4% (1-step)</td>
+                  <td className="py-3 pr-4">8% 静态</td>
+                  <td className="py-3 text-zinc-400">3 次 payout 后费用退还, 低预算入门 ($13 起)</td>
+                </tr>
+                <tr>
+                  <td className="py-3 pr-4 font-medium text-white">FundingPips</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">5% (Standard) / 3% (Pro) / 4% (1-step) / 3% (Instant)</td>
+                  <td className="py-3 pr-4">10% / 6% / 5% trailing (按产品)</td>
+                  <td className="py-3 text-zinc-400">4 次 payout 后费用退还, MT5 / DxTrade / Match-Trader</td>
                 </tr>
               </tbody>
             </table>
+          </div>
+        </Section>
+
+        {/* Rules Guide */}
+        <Section title={d.rulesGuideTitle}>
+          <p className="text-zinc-400 text-sm mb-4">{d.rulesGuideIntro}</p>
+          <div className="grid gap-3">
+            <RuleExplainer title={d.ruleDailyLossTitle} desc={d.ruleDailyLossDesc} />
+            <RuleExplainer title={d.ruleMaxDrawdownTitle} desc={d.ruleMaxDrawdownDesc} />
+            <RuleExplainer title={d.ruleBestDayTitle} desc={d.ruleBestDayDesc} />
+            <RuleExplainer title={d.ruleMinDaysTitle} desc={d.ruleMinDaysDesc} />
+            <RuleExplainer title={d.ruleTimeLimitTitle} desc={d.ruleTimeLimitDesc} />
+            <RuleExplainer title={d.ruleLeverageTitle} desc={d.ruleLeverageDesc} />
+            <div className="rounded-md border border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm">
+              <div className="font-medium text-amber-200 mb-1">{d.freshnessBannerTitle}</div>
+              <div className="text-amber-100/70 leading-relaxed">{d.freshnessBannerDesc}</div>
+            </div>
           </div>
         </Section>
 
@@ -367,6 +451,15 @@ function Decision({ title, description }: { title: string; description: string }
     <div className="border-b border-zinc-900 pb-4">
       <h3 className="text-base font-semibold text-white mb-1">{title}</h3>
       <p className="text-sm text-zinc-400">{description}</p>
+    </div>
+  );
+}
+
+function RuleExplainer({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+      <div className="text-sm font-semibold text-white mb-1">{title}</div>
+      <div className="text-sm text-zinc-400 leading-relaxed">{desc}</div>
     </div>
   );
 }

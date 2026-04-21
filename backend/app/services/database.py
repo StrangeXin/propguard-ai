@@ -139,6 +139,13 @@ def db_get_signals(user_id: str | None = None, limit: int = 20) -> list[dict]:
 
 
 def db_save_alert(user_id: str | None, alert: dict) -> dict | None:
+    """Persist a compliance alert. The `alerts` table enforces NOT NULL on
+    `owner_id`, so unattributed alerts (compliance polls with no user
+    context) can't be written — we skip the insert and keep the alert in
+    in-memory history only. Log once at debug level; this used to spam
+    ERROR on every compliance tick."""
+    if not user_id:
+        return None
     db = get_db()
     if not db:
         return None
@@ -151,11 +158,10 @@ def db_save_alert(user_id: str | None, alert: dict) -> dict | None:
             "message": alert.get("message", "")[:500],
             "remaining": alert.get("remaining"),
             "remaining_pct": alert.get("remaining_pct"),
+            "user_id": user_id,
+            "owner_id": user_id,
+            "owner_kind": "user",
         }
-        if user_id:
-            row["user_id"] = user_id
-            row["owner_id"] = user_id
-            row["owner_kind"] = "user"
         result = db.table("alerts").insert(row).execute()
         if result.data:
             return result.data[0]

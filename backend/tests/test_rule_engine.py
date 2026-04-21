@@ -1,9 +1,14 @@
 """Tests for the PropGuard rule engine."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from app.models.account import AccountState, AlertLevel, Position
-from app.rules.engine import evaluate_compliance, load_firm_rules, list_available_firms
+from app.rules.engine import (
+    evaluate_compliance,
+    load_firm_rules,
+    list_available_firms,
+    _compute_freshness,
+)
 
 
 def make_account(
@@ -35,12 +40,15 @@ def make_account(
 
 
 class TestListFirms:
-    def test_lists_three_firms(self):
+    def test_lists_eight_firms(self):
+        """All currently-shipped prop firms must be visible."""
         firms = list_available_firms()
         names = {f["firm_name"] for f in firms}
-        assert "FTMO" in names
-        assert "TopStep" in names
-        assert "CryptoFundTrader" in names
+        for expected in {
+            "FTMO", "TopStep", "CryptoFundTrader",
+            "FundedNext", "The5ers", "Apex", "Maven", "FundingPips",
+        }:
+            assert expected in names, f"{expected} missing from list_available_firms()"
 
     def test_firm_metadata(self):
         firms = list_available_firms()
@@ -48,6 +56,14 @@ class TestListFirms:
         assert "forex" in ftmo["markets"]
         assert "2-step" in ftmo["evaluation_type"]
         assert 100000 in ftmo["account_sizes"]
+
+    def test_freshness_included(self):
+        """Every firm entry must carry a freshness block."""
+        firms = list_available_firms()
+        for f in firms:
+            assert "freshness" in f
+            assert "status" in f["freshness"]
+            assert f["freshness"]["status"] in {"fresh", "warning", "stale", "unknown"}
 
 
 class TestLoadRules:
@@ -57,9 +73,50 @@ class TestLoadRules:
         # FTMO uses rules_by_evaluation format
         assert "rules_by_evaluation" in rules or "rules" in rules
 
+    def test_load_each_new_firm(self):
+        """New firms added 2026-04-21 must all load and carry valid rules."""
+        for firm in ["fundednext", "the5ers", "apex", "maven", "fundingpips"]:
+            rules = load_firm_rules(firm)
+            assert "firm_name" in rules
+            assert "effective_date" in rules
+            # Must have either `rules` or `rules_by_evaluation`
+            assert "rules" in rules or "rules_by_evaluation" in rules
+
     def test_load_nonexistent(self):
         with pytest.raises(FileNotFoundError):
             load_firm_rules("nonexistent_firm")
+
+
+class TestRuleFreshness:
+    def test_fresh_today(self):
+        today = date.today().isoformat()
+        f = _compute_freshness(today)
+        assert f["status"] == "fresh"
+        assert f["age_days"] == 0
+        assert f["message"] is None
+
+    def test_fresh_within_90_days(self):
+        d = (date.today() - timedelta(days=60)).isoformat()
+        assert _compute_freshness(d)["status"] == "fresh"
+
+    def test_warning_after_90_days(self):
+        d = (date.today() - timedelta(days=120)).isoformat()
+        f = _compute_freshness(d)
+        assert f["status"] == "warning"
+        assert f["age_days"] == 120
+        assert "double-check" in (f["message"] or "")
+
+    def test_stale_after_180_days(self):
+        d = (date.today() - timedelta(days=300)).isoformat()
+        f = _compute_freshness(d)
+        assert f["status"] == "stale"
+        assert f["age_days"] == 300
+        assert "may no longer match" in (f["message"] or "")
+
+    def test_unknown_on_malformed_date(self):
+        f = _compute_freshness("not-a-date")
+        assert f["status"] == "unknown"
+        assert f["age_days"] is None
 
 
 class TestFTMOCompliance:
