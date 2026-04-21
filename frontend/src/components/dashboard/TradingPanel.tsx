@@ -86,9 +86,12 @@ const texts: Record<string, Record<string, string>> = {
     pendingOrders: "Pending Orders",
     history: "Trade History",
     close: "Close",
+    closing: "Closing…",
     partial: "Partial",
     modify: "Modify",
     cancel: "Cancel",
+    cancelling: "Cancelling…",
+    processing: "processing",
     noPositions: "No open positions",
     noOrders: "No pending orders",
     noHistory: "No trade history",
@@ -121,9 +124,12 @@ const texts: Record<string, Record<string, string>> = {
     pendingOrders: "挂单",
     history: "交易记录",
     close: "平仓",
+    closing: "平仓中…",
     partial: "部分",
     modify: "修改",
     cancel: "取消",
+    cancelling: "撤单中…",
+    processing: "处理中",
     noPositions: "暂无持仓",
     noOrders: "暂无挂单",
     noHistory: "暂无交易记录",
@@ -313,41 +319,86 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     }
   };
 
-  // Close position
+  // Track in-flight position/order mutations so the UI can disable buttons
+  // and fade out the row during the MetaApi round-trip (0.5–2s typical).
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const markBusy = (id: string, busy: boolean) => {
+    setBusyIds((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  // Close position — row shows a "closing" state during the MetaApi
+  // round-trip. On confirmed success we remove it from local state
+  // immediately (no flash where the busy state clears before refetch
+  // catches up), then refetch in the background to reconcile.
   const closePos = async (posId: string) => {
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
-    await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
+    markBusy(posId, true);
+    let ok = false;
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
+      ok = res.ok;
+      if (!ok) setMsg("Close failed");
+    } catch {
+      setMsg("Network error");
+    }
+    if (ok && account) {
+      setAccount({ ...account, positions: account.positions.filter((p) => p.id !== posId) });
+    }
+    markBusy(posId, false);
     fetchAccount();
   };
 
-  // Partial close
   const partialClose = async (posId: string) => {
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     if (!partialVol) return;
-    await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
-    setPartialPos(null);
-    setPartialVol("");
-    fetchAccount();
+    markBusy(posId, true);
+    try {
+      await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
+    } finally {
+      markBusy(posId, false);
+      setPartialPos(null);
+      setPartialVol("");
+      fetchAccount();
+    }
   };
 
-  // Modify SL/TP
   const modifyPos = async (posId: string) => {
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
-    await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
-      method: "POST", headers,
-      body: JSON.stringify({
-        stop_loss: editSl ? parseFloat(editSl) : null,
-        take_profit: editTp ? parseFloat(editTp) : null,
-      }),
-    });
-    setEditingPos(null);
-    fetchAccount();
+    markBusy(posId, true);
+    try {
+      await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          stop_loss: editSl ? parseFloat(editSl) : null,
+          take_profit: editTp ? parseFloat(editTp) : null,
+        }),
+      });
+    } finally {
+      markBusy(posId, false);
+      setEditingPos(null);
+      fetchAccount();
+    }
   };
 
-  // Cancel pending order
   const cancelOrder = async (orderId: string) => {
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
-    await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
+    markBusy(orderId, true);
+    let ok = false;
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
+      ok = res.ok;
+      if (!ok) setMsg("Cancel failed");
+    } catch {
+      setMsg("Network error");
+    }
+    if (ok) {
+      setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
+    }
+    markBusy(orderId, false);
     fetchOrders();
   };
 
@@ -457,8 +508,10 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           {(!account || account.positions.length === 0) && (
             <div className="bg-zinc-900 rounded-lg p-6 text-center text-zinc-600 text-sm">{t.noPositions}</div>
           )}
-          {account?.positions.map((p) => (
-            <div key={p.id} className="bg-zinc-900 rounded-lg p-3 space-y-2">
+          {account?.positions.map((p) => {
+            const busy = busyIds.has(p.id);
+            return (
+            <div key={p.id} className={`bg-zinc-900 rounded-lg p-3 space-y-2 transition-opacity ${busy ? "opacity-60" : ""}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Badge className={p.side === "long" ? "bg-green-900 text-green-300 text-[10px]" : "bg-red-900 text-red-300 text-[10px]"}>{p.side.toUpperCase()}</Badge>
@@ -482,10 +535,14 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   <span className="ml-auto tabular-nums">{fmtShortTime(p.opened_at)}</span>
                 )}
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => closePos(p.id)} className="px-3 py-1 bg-red-900/50 text-red-300 text-xs rounded hover:bg-red-900 transition-colors">{t.close}</button>
-                <button onClick={() => { setPartialPos(p.id); setPartialVol(String(p.volume / 2)); }} className="px-3 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700 transition-colors">{t.partial}</button>
-                <button onClick={() => { setEditingPos(p.id); setEditSl(p.stop_loss ? String(p.stop_loss) : ""); setEditTp(p.take_profit ? String(p.take_profit) : ""); }} className="px-3 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700 transition-colors">{t.modify}</button>
+              <div className="flex gap-2 items-center">
+                <button onClick={() => closePos(p.id)} disabled={busy} className="px-3 py-1 bg-red-900/50 text-red-300 text-xs rounded hover:bg-red-900 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                  {busy && <span className="inline-block w-3 h-3 border-2 border-red-300/40 border-t-red-300 rounded-full animate-spin" />}
+                  {busy ? t.closing : t.close}
+                </button>
+                <button onClick={() => { setPartialPos(p.id); setPartialVol(String(p.volume / 2)); }} disabled={busy} className="px-3 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700 disabled:opacity-50 transition-colors">{t.partial}</button>
+                <button onClick={() => { setEditingPos(p.id); setEditSl(p.stop_loss ? String(p.stop_loss) : ""); setEditTp(p.take_profit ? String(p.take_profit) : ""); }} disabled={busy} className="px-3 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700 disabled:opacity-50 transition-colors">{t.modify}</button>
+                {busy && <span className="text-[10px] text-zinc-500 ml-1">{t.processing}</span>}
               </div>
 
               {/* Partial close form */}
@@ -508,7 +565,8 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -518,8 +576,10 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
           {pendingOrders.length === 0 && (
             <div className="bg-zinc-900 rounded-lg p-6 text-center text-zinc-600 text-sm">{t.noOrders}</div>
           )}
-          {pendingOrders.map((o) => (
-            <div key={o.id} className="bg-zinc-900 rounded-lg px-4 py-2.5 flex items-center justify-between">
+          {pendingOrders.map((o) => {
+            const busy = busyIds.has(o.id);
+            return (
+            <div key={o.id} className={`bg-zinc-900 rounded-lg px-4 py-2.5 flex items-center justify-between transition-opacity ${busy ? "opacity-50" : ""}`}>
               <div className="flex items-center gap-2 min-w-0">
                 <Badge className="bg-yellow-900 text-yellow-300 text-[10px]">{o.type}</Badge>
                 <span className="font-mono text-white text-sm">{o.symbol}</span>
@@ -533,9 +593,13 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   <span className="text-[10px] text-zinc-600 tabular-nums ml-1">{fmtShortTime(o.created_at)}</span>
                 )}
               </div>
-              <button onClick={() => cancelOrder(o.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">{t.cancel}</button>
+              <button onClick={() => cancelOrder(o.id)} disabled={busy} className="text-xs text-zinc-500 hover:text-red-400 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                {busy && <span className="inline-block w-3 h-3 border-2 border-zinc-500/40 border-t-zinc-300 rounded-full animate-spin" />}
+                {busy ? t.cancelling : t.cancel}
+              </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
