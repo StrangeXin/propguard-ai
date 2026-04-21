@@ -155,7 +155,7 @@ const texts: Record<string, Record<string, string>> = {
 
 export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
   const { locale, t: ti18n } = useI18n();
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const { openGate } = useLoginGate();
   const t = texts[locale] || texts.en;
 
@@ -171,6 +171,15 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
   const [symbolSpec, setSymbolSpec] = useState<SymbolSpec | null>(null);
+
+  // Called when a mutating request comes back 401 — token either expired or
+  // the server rotated secrets. Clear the stored token, drop user state, and
+  // re-open the login modal so the user can re-auth without seeing the dead
+  // "Authentication required" toast.
+  const handleAuthExpired = () => {
+    logout();
+    openGate(ti18n("auth.session_expired"));
+  };
 
   const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
 
@@ -389,6 +398,10 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       }
 
       const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+      if (res.status === 401) {
+        handleAuthExpired();
+        return;
+      }
       const data = await res.json();
       if (res.ok && data.success) {
         setMsg({
@@ -429,6 +442,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     let ok = false;
     try {
       const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close`, { method: "POST", headers });
+      if (res.status === 401) { handleAuthExpired(); markBusy(posId, false); return; }
       ok = res.ok;
       if (!ok) setMsg("Close failed");
     } catch {
@@ -446,7 +460,8 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     if (!partialVol) return;
     markBusy(posId, true);
     try {
-      await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
+      const res = await fetch(`${API_BASE}/api/trading/position/${posId}/close-partial?volume=${parseFloat(partialVol)}`, { method: "POST", headers });
+      if (res.status === 401) { handleAuthExpired(); return; }
     } finally {
       markBusy(posId, false);
       setPartialPos(null);
@@ -459,13 +474,14 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     if (!token) { openGate(ti18n("auth.login_to_place_order")); return; }
     markBusy(posId, true);
     try {
-      await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
+      const res = await fetch(`${API_BASE}/api/trading/position/${posId}/modify`, {
         method: "POST", headers,
         body: JSON.stringify({
           stop_loss: editSl ? parseFloat(editSl) : null,
           take_profit: editTp ? parseFloat(editTp) : null,
         }),
       });
+      if (res.status === 401) { handleAuthExpired(); return; }
     } finally {
       markBusy(posId, false);
       setEditingPos(null);
@@ -479,6 +495,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     let ok = false;
     try {
       const res = await fetch(`${API_BASE}/api/trading/order/${orderId}/cancel`, { method: "POST", headers });
+      if (res.status === 401) { handleAuthExpired(); markBusy(orderId, false); return; }
       ok = res.ok;
       if (!ok) setMsg("Cancel failed");
     } catch {
