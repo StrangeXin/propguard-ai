@@ -35,9 +35,14 @@ const features = {
 };
 
 const firms = [
-  { name: "FTMO", market: "Forex / Indices", dd: "10% static" },
-  { name: "TopStep", market: "Futures", dd: "3-4% trailing" },
-  { name: "CryptoFundTrader", market: "Crypto / Forex", dd: "10% static" },
+  { name: "FTMO", market: "FX / Indices / Commodities / Crypto", dd: "10% static" },
+  { name: "TopStep", market: "Futures", dd: "Trailing EOD" },
+  { name: "CryptoFundTrader", market: "Crypto / FX", dd: "10% static" },
+  { name: "FundedNext", market: "FX / Indices / Commodities / Crypto", dd: "10% static" },
+  { name: "The5ers", market: "FX / Indices / Commodities", dd: "6% Stop Out" },
+  { name: "Apex", market: "Futures", dd: "Live trailing" },
+  { name: "Maven", market: "FX / Indices / Commodities / Crypto", dd: "8% static" },
+  { name: "FundingPips", market: "FX / Indices / Commodities / Crypto", dd: "10% (2-step) / 6% (1-step)" },
 ];
 
 const texts = {

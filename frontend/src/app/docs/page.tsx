@@ -158,7 +158,7 @@ export default function DocsPage() {
 │                   Backend                         │
 │              Python FastAPI                       │
 │                                                   │
-│  Rule Engine ← JSON Rules (FTMO/TopStep/CryptoFundTrader)│
+│  Rule Engine ← JSON Rules (8 firms, freshness-aware)     │
 │  Signal Parser ← Telegram Bot / TradingView Hook │
 │  AI Scorer ← Claude API (Haiku) + Rule Fallback  │
 │  Alert Service → Telegram Bot API                │
@@ -188,24 +188,59 @@ export default function DocsPage() {
               <tbody className="text-zinc-300">
                 <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">FTMO</td>
-                  <td className="py-3 pr-4">外汇 / 指数 / 加密 / 外汇</td>
-                  <td className="py-3 pr-4">5%</td>
-                  <td className="py-3 pr-4">10% (静态)</td>
-                  <td className="py-3 text-zinc-400">新闻交易限制, 4 天最低</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">5% (2-step) / 3% (1-step)</td>
+                  <td className="py-3 pr-4">10% (static 2-step) / 10% trailing (1-step)</td>
+                  <td className="py-3 text-zinc-400">新闻交易限制, 4 天最低, 无时间限制</td>
                 </tr>
                 <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">TopStep</td>
                   <td className="py-3 pr-4">期货</td>
-                  <td className="py-3 pr-4">2% ($1K-3K)</td>
-                  <td className="py-3 pr-4">3-4% (追踪)</td>
-                  <td className="py-3 text-zinc-400">追踪回撤, 合约数限制</td>
+                  <td className="py-3 pr-4">$1K-3K (Classic) / 无 (TopstepX)</td>
+                  <td className="py-3 pr-4">EOD 追踪</td>
+                  <td className="py-3 text-zinc-400">合约数限制, 一致性规则</td>
                 </tr>
-                <tr>
+                <tr className="border-b border-zinc-900">
                   <td className="py-3 pr-4 font-medium text-white">CryptoFundTrader</td>
                   <td className="py-3 pr-4">加密 / 外汇</td>
-                  <td className="py-3 pr-4">无</td>
+                  <td className="py-3 pr-4">4-5%</td>
+                  <td className="py-3 pr-4">6% (Instant) / 10% (2-phase)</td>
+                  <td className="py-3 text-zinc-400">Bybit 直连, MT5 / Match-Trader</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">FundedNext</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">5%</td>
                   <td className="py-3 pr-4">10% (静态)</td>
-                  <td className="py-3 text-zinc-400">无时间限制, MT5 / Bybit</td>
+                  <td className="py-3 text-zinc-400">无时间限制, 最高 95% 分成, MT5 / Match-Trader / cTrader</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">The5ers</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品</td>
+                  <td className="py-3 pr-4">3% (严格)</td>
+                  <td className="py-3 pr-4">6% Stop Out (严格)</td>
+                  <td className="py-3 text-zinc-400">1:30 杠杆上限, 无最低交易天数, cTrader / MT5</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">Apex</td>
+                  <td className="py-3 pr-4">期货</td>
+                  <td className="py-3 pr-4">无</td>
+                  <td className="py-3 pr-4">Live trailing (按账户浮动)</td>
+                  <td className="py-3 text-zinc-400">100% 首 $25K 分成, 8 天 payout, 新闻允许</td>
+                </tr>
+                <tr className="border-b border-zinc-900">
+                  <td className="py-3 pr-4 font-medium text-white">Maven</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">2% (极严) / 4% (1-step)</td>
+                  <td className="py-3 pr-4">8% 静态</td>
+                  <td className="py-3 text-zinc-400">3 次 payout 后费用退还, 低预算入门 ($13 起)</td>
+                </tr>
+                <tr>
+                  <td className="py-3 pr-4 font-medium text-white">FundingPips</td>
+                  <td className="py-3 pr-4">外汇 / 指数 / 商品 / 加密</td>
+                  <td className="py-3 pr-4">5% (Standard) / 3% (Pro) / 4% (1-step) / 3% (Instant)</td>
+                  <td className="py-3 pr-4">10% / 6% / 5% trailing (按产品)</td>
+                  <td className="py-3 text-zinc-400">4 次 payout 后费用退还, MT5 / DxTrade / Match-Trader</td>
                 </tr>
               </tbody>
             </table>

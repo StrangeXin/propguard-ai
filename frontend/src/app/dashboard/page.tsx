@@ -33,6 +33,11 @@ const FIRMS = [
   { name: "ftmo", label: "FTMO", sizes: [10000, 25000, 50000, 100000, 200000], defaultSize: 100000, evalTypes: ["1-step", "2-step"], defaultEval: "1-step" },
   { name: "topstep", label: "TopStep", sizes: [50000, 100000, 150000], defaultSize: 50000, evalTypes: null, defaultEval: null },
   { name: "cryptofundtrader", label: "CryptoFundTrader", sizes: [5000, 10000, 25000, 50000, 100000, 200000], defaultSize: 100000, evalTypes: null, defaultEval: null },
+  { name: "fundednext", label: "FundedNext", sizes: [6000, 15000, 25000, 50000, 100000, 200000], defaultSize: 100000, evalTypes: ["1-step", "2-step"], defaultEval: "2-step" },
+  { name: "the5ers", label: "The5ers", sizes: [5000, 10000, 20000, 40000], defaultSize: 10000, evalTypes: ["2-step", "instant"], defaultEval: "2-step" },
+  { name: "apex", label: "Apex", sizes: [25000, 50000, 75000, 100000, 150000, 250000, 300000], defaultSize: 50000, evalTypes: null, defaultEval: null },
+  { name: "maven", label: "Maven", sizes: [2000, 5000, 10000, 25000, 50000, 100000, 200000], defaultSize: 25000, evalTypes: ["1-step", "2-step", "instant"], defaultEval: "2-step" },
+  { name: "fundingpips", label: "FundingPips", sizes: [5000, 10000, 25000, 50000, 100000], defaultSize: 25000, evalTypes: ["1-step", "2-step", "instant"], defaultEval: "2-step" },
 ];
 
 export default function Dashboard() {
