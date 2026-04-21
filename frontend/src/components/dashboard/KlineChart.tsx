@@ -397,7 +397,10 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
       setActiveIndicators((prev) => prev.filter((i) => i !== name));
     } else {
       if (ind.main) {
-        chartInstance.current.createIndicator(name, false, { id: "candle_pane" });
+        // isStack=true → add to the candle pane alongside any existing main
+        // indicators (MA + EMA + BOLL can coexist). isStack=false would
+        // replace whatever is already there.
+        chartInstance.current.createIndicator(name, true, { id: "candle_pane" });
       } else {
         chartInstance.current.createIndicator(name);
       }
