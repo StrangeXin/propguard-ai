@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class MetaApiConnection:
-    """Single MetaApi account connection."""
+    """Single MetaApi account connection (RPC)."""
 
     def __init__(self, account_id: str):
         self.account_id = account_id
@@ -22,6 +22,10 @@ class MetaApiConnection:
         self.account = None
         self.connection = None
         self.ready = False
+        # symbol → broker-specific name (e.g. BTCUSD → BTCUSD.sim). Per-instance
+        # because different broker accounts use different suffix conventions;
+        # a module-level cache would mix them up during startup windows.
+        self.symbol_resolved: dict[str, str] = {}
 
     async def connect(self, token: str) -> bool:
         try:

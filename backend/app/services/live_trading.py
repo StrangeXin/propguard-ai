@@ -24,43 +24,40 @@ async def get_metaapi_connection(firm_name: str = "ftmo"):
     return None
 
 
-# Cache: symbol → (resolved broker-specific name, negative/positive).
-# MetaApi's get_symbol_price() is a real WS round-trip (can time out on first
-# subscribe), and resolve_symbol() was probing up to 6 variants per call.
-# Front end polls every 5s × multiple symbols → dozens of wasted probes.
-# The resolution answer never changes for a given broker, so a process-
-# lifetime cache is safe.
-_SYMBOL_RESOLVE_CACHE: dict[str, str] = {}
-
-
-async def resolve_symbol(symbol: str, conn=None) -> str:
+async def resolve_symbol(symbol: str, conn=None, account_conn=None) -> str:
     """Resolve symbol name for the connected broker.
     FTMO uses .sim suffix (e.g. EURUSD.sim), other brokers use plain names.
-    Cached after the first successful probe.
+    Cached on the account-level MetaApiConnection wrapper so different
+    broker accounts don't share each other's (wrong) resolutions.
     """
-    if symbol in _SYMBOL_RESOLVE_CACHE:
-        return _SYMBOL_RESOLVE_CACHE[symbol]
+    # Pull the per-account wrapper from the api broker if caller didn't pass it
+    if account_conn is None:
+        try:
+            from app.api.routes import broker as api_broker
+            account_conn = api_broker._get_connection("ftmo") or api_broker._default_conn
+        except Exception:
+            account_conn = None
+
+    if account_conn is not None and symbol in account_conn.symbol_resolved:
+        return account_conn.symbol_resolved[symbol]
 
     if not conn:
         conn = await get_metaapi_connection()
     if not conn:
         return symbol
 
-    # Try original first, then common broker-specific suffixes.
     candidates = [symbol, f"{symbol}.sim", f"{symbol}.pro", f"{symbol}.raw",
                   f"{symbol}.m", f"{symbol}.z"]
     for cand in candidates:
         try:
             await conn.get_symbol_price(cand)
-            _SYMBOL_RESOLVE_CACHE[symbol] = cand
+            if account_conn is not None:
+                account_conn.symbol_resolved[symbol] = cand
             return cand
         except Exception:
             continue
 
-    # Couldn't resolve — cache the plain symbol anyway so we don't re-probe
-    # on every request. Next upstream call will fail with a meaningful error
-    # instead of waiting 30s for 6 timeouts in a row.
-    _SYMBOL_RESOLVE_CACHE[symbol] = symbol
+    # Couldn't resolve — don't poison the cache; next call can re-probe.
     return symbol
 
 
@@ -311,25 +308,66 @@ async def mt5_get_symbol_spec(symbol: str) -> dict | None:
         return None
 
 
+# Short-TTL price cache + in-flight deduplication.
+# Multiple concurrent clients polling /api/trading/symbol/BTCUSD at the same
+# instant will share a single MetaApi round-trip instead of stacking them up.
+# 1.5s is tight enough that bid/ask still feels live (< one polling interval)
+# but loose enough to cut N redundant requests to 1.
+import asyncio as _asyncio
+import time as _time
+
+_PRICE_CACHE: dict[str, tuple[float, dict]] = {}
+_PRICE_INFLIGHT: dict[str, _asyncio.Future] = {}
+_PRICE_TTL_SECONDS = 1.5
+
+
 async def mt5_get_symbol_price(symbol: str) -> dict | None:
-    """Get real-time bid/ask price for a symbol."""
-    conn = await get_metaapi_connection()
-    if not conn:
-        return None
+    """Get real-time bid/ask price for a symbol.
+
+    Uses a 1.5s in-memory cache with single-flight deduplication — if 10
+    clients ask for BTCUSD within 1.5s, only the first one actually hits
+    MetaApi; the other nine await the same future and get the same answer.
+    """
+    cached = _PRICE_CACHE.get(symbol)
+    if cached and (_time.time() - cached[0]) < _PRICE_TTL_SECONDS:
+        return cached[1]
+
+    # Single-flight: if a fetch is already in flight for this symbol, wait
+    # for it instead of firing a second one.
+    inflight = _PRICE_INFLIGHT.get(symbol)
+    if inflight is not None:
+        try:
+            return await inflight
+        except Exception:
+            return None
+
+    loop = _asyncio.get_event_loop()
+    fut: _asyncio.Future = loop.create_future()
+    _PRICE_INFLIGHT[symbol] = fut
 
     try:
+        conn = await get_metaapi_connection()
+        if not conn:
+            fut.set_result(None)
+            return None
         resolved = await resolve_symbol(symbol, conn)
-        price = await conn.get_symbol_price(resolved)
-        return {
-            "symbol": price.get("symbol"),
-            "bid": price.get("bid"),
-            "ask": price.get("ask"),
-            "time": price.get("time"),
-            "spread": round(price.get("ask", 0) - price.get("bid", 0), 6),
+        raw = await conn.get_symbol_price(resolved)
+        out = {
+            "symbol": raw.get("symbol"),
+            "bid": raw.get("bid"),
+            "ask": raw.get("ask"),
+            "time": raw.get("time"),
+            "spread": round(raw.get("ask", 0) - raw.get("bid", 0), 6),
         }
+        _PRICE_CACHE[symbol] = (_time.time(), out)
+        fut.set_result(out)
+        return out
     except Exception as e:
         logger.error(f"MT5 price failed for {symbol}: {e}")
+        fut.set_result(None)
         return None
+    finally:
+        _PRICE_INFLIGHT.pop(symbol, None)
 
 
 async def mt5_get_trade_history(days: int = 30) -> list[dict]:
