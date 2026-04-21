@@ -335,7 +335,12 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   useEffect(() => {
     fetchAccount();
     fetchAccountInfo();
-    const i1 = setInterval(fetchAccount, 15000); // 15s, not 5s
+    // Account polling at 30s — the compliance hook (useCompliance) polls
+    // every 10s AND keeps a WebSocket for live updates, so account/positions
+    // data is kept fresh by that channel. This interval exists as a belt-
+    // and-suspenders refresh in case WS drops; making it too aggressive just
+    // spams /api/trading/account (which goes to MetaApi and can be slow).
+    const i1 = setInterval(fetchAccount, 30000);
     return () => clearInterval(i1);
   }, [fetchAccount, fetchAccountInfo]);
 
@@ -350,7 +355,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     setLimitPrice("");
     setMsg(null);
     fetchPrice();
-    const i2 = setInterval(fetchPrice, 10000);
+    // Price poll at 5s — fast enough to keep the BUY/SELL ladder fresh, slow
+    // enough that MetaApi / TwelveData rate-limits don't push back.
+    const i2 = setInterval(fetchPrice, 5000);
     return () => clearInterval(i2);
   }, [fetchPrice]);
 
