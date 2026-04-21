@@ -62,6 +62,12 @@ interface SymbolPrice {
   digits?: number;
 }
 
+interface SymbolSpec {
+  min_volume: number;
+  max_volume: number;
+  volume_step: number;
+}
+
 import { SymbolSelect } from "./SymbolSelect";
 
 const texts: Record<string, Record<string, string>> = {
@@ -164,6 +170,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const [historyPageSize, setHistoryPageSize] = useState(20);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   const [symbolPrice, setSymbolPrice] = useState<SymbolPrice | null>(null);
+  const [symbolSpec, setSymbolSpec] = useState<SymbolSpec | null>(null);
 
   const [symbol, setSymbolLocal] = useState(externalSymbol || "EURUSD");
 
@@ -252,13 +259,31 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
         const data = await res.json();
         if (data.price) {
           setSymbolPrice({ ...data.price, digits: data.spec?.digits });
+          if (data.spec) {
+            const spec: SymbolSpec = {
+              min_volume: Number(data.spec.min_volume) || 0.01,
+              max_volume: Number(data.spec.max_volume) || 100,
+              volume_step: Number(data.spec.volume_step) || 0.01,
+            };
+            setSymbolSpec((prev) => {
+              // First load for this symbol, or volume_step changed → snap
+              // the size input to a valid value so the user can't submit an
+              // off-step volume (e.g. US500 needs step 0.1, not default 0.01).
+              if (!prev || prev.volume_step !== spec.volume_step || prev.min_volume !== spec.min_volume) {
+                setSize(String(spec.min_volume));
+              }
+              return spec;
+            });
+          }
           setSymbolUnavailable(false);
         } else {
           setSymbolPrice(null);
+          setSymbolSpec(null);
           setSymbolUnavailable(true);
         }
       } else {
         setSymbolPrice(null);
+        setSymbolSpec(null);
         setSymbolUnavailable(true);
       }
     } catch {
@@ -331,6 +356,22 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       openGate(ti18n("auth.login_to_place_order"));
       return;
     }
+    // Pre-submit volume validation — catch off-step / out-of-range before
+    // wasting a broker round-trip ("Invalid volume in the request").
+    const vol = parseFloat(size);
+    if (symbolSpec) {
+      const { min_volume, max_volume, volume_step } = symbolSpec;
+      if (isNaN(vol) || vol < min_volume || vol > max_volume) {
+        setMsg({ kind: "error", text: `Size must be between ${min_volume} and ${max_volume}` });
+        return;
+      }
+      // Check multiples of volume_step with an epsilon for float imprecision.
+      const ratio = (vol - min_volume) / volume_step;
+      if (Math.abs(ratio - Math.round(ratio)) > 1e-6) {
+        setMsg({ kind: "error", text: `Size must be a multiple of ${volume_step}` });
+        return;
+      }
+    }
     setLoading(true);
     setMsg(null);
     try {
@@ -338,7 +379,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
       const body: Record<string, unknown> = {
         symbol,
         side,
-        size: parseFloat(size),
+        size: vol,
         stop_loss: sl ? parseFloat(sl) : null,
         take_profit: tp ? parseFloat(tp) : null,
       };
@@ -508,8 +549,23 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
             {/* Inputs */}
             <div className={`grid ${orderType === "market" ? "grid-cols-3" : "grid-cols-4"} gap-2`}>
               <div>
-                <label className="text-[10px] text-zinc-500 block mb-1">{t.size}</label>
-                <input type="number" step="0.01" value={size} onChange={(e) => setSize(e.target.value)} className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none" />
+                <label className="text-[10px] text-zinc-500 block mb-1">
+                  {t.size}
+                  {symbolSpec && (
+                    <span className="text-zinc-600 ml-1">
+                      ({symbolSpec.min_volume}–{symbolSpec.max_volume}, step {symbolSpec.volume_step})
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  step={symbolSpec?.volume_step ?? 0.01}
+                  min={symbolSpec?.min_volume ?? 0.01}
+                  max={symbolSpec?.max_volume ?? 100}
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className="w-full bg-zinc-800 text-white rounded px-2 py-1.5 text-sm focus:outline-none"
+                />
               </div>
               {orderType !== "market" && (
                 <div>
