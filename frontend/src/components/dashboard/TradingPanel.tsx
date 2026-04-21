@@ -412,7 +412,8 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
         fetchAccount();
         fetchOrders();
       } else {
-        setMsg({ kind: "error", text: data.error || data.detail || "Order failed" });
+        const raw = String(data.error || data.detail || "Order failed");
+        setMsg({ kind: "error", text: humanizeBrokerError(raw, vol) });
       }
     } catch {
       setMsg({ kind: "error", text: "Network error" });
@@ -847,6 +848,26 @@ function formatSpread(spread: number, digits?: number): string {
   // Low-digit instruments (crypto, indices): show raw price diff; "3" is more
   // meaningful than "300 pts" for BTC.
   return spread.toFixed(digits);
+}
+
+function humanizeBrokerError(raw: string, size: number): string {
+  const s = raw.toLowerCase();
+  if (s.includes("invalid volume")) {
+    return `Broker rejected size ${size}. The account's per-order cap is usually lower than the spec's max_volume; try a smaller size.`;
+  }
+  if (s.includes("not enough money") || s.includes("no money")) {
+    return "Insufficient free margin. Close some positions or reduce the size.";
+  }
+  if (s.includes("market is closed") || s.includes("off quotes")) {
+    return "Market closed for this symbol right now. Try again during session hours.";
+  }
+  if (s.includes("invalid stops")) {
+    return "Stop-loss / take-profit is too close to the current price or on the wrong side.";
+  }
+  if (s.includes("no price")) {
+    return "No price feed for this symbol. Try a different one or refresh.";
+  }
+  return raw;
 }
 
 function fmtShortTime(iso?: string | null): string {
