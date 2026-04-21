@@ -12,3 +12,4 @@ __pycache__/
 *.pyc
 .env
 backend/.next/
+backend/.metaapi/
