@@ -237,3 +237,75 @@ class TestCryptoFundTraderCompliance:
         report = evaluate_compliance(account)
         dd_check = next(c for c in report.checks if c.rule_type == "max_drawdown")
         assert dd_check.alert_level == AlertLevel.DANGER
+
+
+class TestScalarLeverageChecker:
+    """The5ers (1:30) and FundingPips 1-Step (1:50) expose scalar leverage caps,
+    not per-asset. Engine used to silently drop these — verify they now evaluate."""
+
+    def test_the5ers_no_positions_is_safe(self):
+        account = make_account(firm_name="the5ers", account_size=10000, positions=[])
+        report = evaluate_compliance(account, evaluation_type="2-step")
+        lev_check = next(c for c in report.checks if c.rule_type == "leverage")
+        assert lev_check.alert_level == AlertLevel.SAFE
+        assert lev_check.current_value == 0
+
+    def test_the5ers_under_cap(self):
+        """10k account, 1:30 cap. 100k notional / 10k equity = 10x leverage → SAFE."""
+        pos = Position(
+            symbol="EURUSD", side="long", size=100000, entry_price=1.08,
+            current_price=1.08, unrealized_pnl=0, opened_at=datetime.now(),
+        )
+        # 100000 * 1.08 = 108_000 notional, equity = 10_000 → 10.8x
+        account = make_account(firm_name="the5ers", account_size=10000, positions=[pos])
+        report = evaluate_compliance(account, evaluation_type="2-step")
+        lev_check = next(c for c in report.checks if c.rule_type == "leverage")
+        assert lev_check.alert_level == AlertLevel.SAFE
+        assert 10 < lev_check.current_value < 11
+
+    def test_the5ers_over_cap_triggers_danger(self):
+        """10k account, 1:30 cap. 500k notional / 10k equity = 54x → DANGER."""
+        pos = Position(
+            symbol="EURUSD", side="long", size=500000, entry_price=1.08,
+            current_price=1.08, unrealized_pnl=0, opened_at=datetime.now(),
+        )
+        account = make_account(firm_name="the5ers", account_size=10000, positions=[pos])
+        report = evaluate_compliance(account, evaluation_type="2-step")
+        lev_check = next(c for c in report.checks if c.rule_type == "leverage")
+        assert lev_check.alert_level == AlertLevel.DANGER
+        assert "max 30x" in lev_check.message
+
+
+class TestConsistencyChecker:
+    """Engine now maps both legacy `best_day_rule` and schema-canonical
+    `consistency` rule types to informational-card output."""
+
+    def test_consistency_rule_produces_card(self):
+        """Direct-call test: scalar threshold with percent unit produces a card."""
+        from app.rules.engine import check_consistency
+        account = make_account(firm_name="ftmo", account_size=100000)
+        rule = {
+            "type": "consistency",
+            "value": 50,
+            "unit": "percent_of_total_profit",
+            "description": "Best day ≤ 50% of total profit",
+        }
+        result = check_consistency(account, rule, {})
+        assert result is not None
+        assert result.rule_type == "consistency"
+        assert result.alert_level == AlertLevel.SAFE
+        assert "50" in result.message
+
+    def test_consistency_profitable_days_variant(self):
+        """Maven-style: minimum N profitable days."""
+        from app.rules.engine import check_consistency
+        account = make_account(firm_name="maven", account_size=10000)
+        rule = {
+            "type": "consistency",
+            "value": 3,
+            "unit": "profitable_days",
+            "description": "Minimum 3 profitable days per phase",
+        }
+        result = check_consistency(account, rule, {})
+        assert result is not None
+        assert "3 profitable day" in result.message
