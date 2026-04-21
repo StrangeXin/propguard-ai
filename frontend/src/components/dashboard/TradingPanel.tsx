@@ -94,6 +94,7 @@ const texts: Record<string, Record<string, string>> = {
     cancelling: "Cancelling…",
     processing: "processing",
     placing: "Placing…",
+    symbolUnavailable: "This symbol is not available on the demo account.",
     noPositions: "No open positions",
     noOrders: "No pending orders",
     noHistory: "No trade history",
@@ -133,6 +134,7 @@ const texts: Record<string, Record<string, string>> = {
     cancelling: "撤单中…",
     processing: "处理中",
     placing: "下单中…",
+    symbolUnavailable: "当前账号不支持该品种",
     noPositions: "暂无持仓",
     noOrders: "暂无挂单",
     noHistory: "暂无交易记录",
@@ -238,20 +240,30 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Fetch symbol price
+  const [symbolUnavailable, setSymbolUnavailable] = useState(false);
+
+  // Fetch symbol price + spec. Sets unavailable=true when MetaApi returns
+  // {price: null} so we can disable the order buttons instead of silently
+  // letting the user submit with a stale price from a previous symbol.
   const fetchPrice = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/trading/symbol/${symbol}`);
       if (res.ok) {
         const data = await res.json();
         if (data.price) {
-          setSymbolPrice({
-            ...data.price,
-            digits: data.spec?.digits,
-          });
+          setSymbolPrice({ ...data.price, digits: data.spec?.digits });
+          setSymbolUnavailable(false);
+        } else {
+          setSymbolPrice(null);
+          setSymbolUnavailable(true);
         }
+      } else {
+        setSymbolPrice(null);
+        setSymbolUnavailable(true);
       }
-    } catch { /* silent */ }
+    } catch {
+      setSymbolPrice(null);
+    }
   }, [symbol]);
 
   // Fetch pending orders (anon allowed)
@@ -294,9 +306,17 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   }, [fetchAccount, fetchAccountInfo]);
 
   useEffect(() => {
+    // Symbol changed — clear price + per-symbol inputs. Stale SL/TP/limit
+    // from a different-magnitude symbol (BTC vs EURUSD) would otherwise
+    // produce garbage orders on submit.
     setSymbolPrice(null);
+    setSymbolUnavailable(false);
+    setSl("");
+    setTp("");
+    setLimitPrice("");
+    setMsg(null);
     fetchPrice();
-    const i2 = setInterval(fetchPrice, 10000); // 10s, not 3s
+    const i2 = setInterval(fetchPrice, 10000);
     return () => clearInterval(i2);
   }, [fetchPrice]);
 
@@ -508,8 +528,13 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
             </div>
 
             {/* Sell (bid) | spread | Buy (ask) — MT5-style quote ladder */}
+            {symbolUnavailable && (
+              <div className="text-xs px-3 py-2 rounded bg-amber-900/30 border border-amber-800/50 text-amber-300">
+                {t.symbolUnavailable}
+              </div>
+            )}
             <div className="flex items-stretch gap-0 rounded-lg overflow-hidden">
-              <button onClick={() => submitOrder("sell")} disabled={loading}
+              <button onClick={() => submitOrder("sell")} disabled={loading || !symbolPrice}
                 className="flex-1 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
                 {loading ? (
                   <span className="flex items-center gap-2 py-2">
@@ -529,7 +554,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   {symbolPrice ? formatSpread(symbolPrice.spread, symbolPrice.digits) : "—"}
                 </span>
               </div>
-              <button onClick={() => submitOrder("buy")} disabled={loading}
+              <button onClick={() => submitOrder("buy")} disabled={loading || !symbolPrice}
                 className="flex-1 py-3 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
                 {loading ? (
                   <span className="flex items-center gap-2 py-2">
