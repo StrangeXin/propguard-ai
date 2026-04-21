@@ -16,7 +16,9 @@ async function registerBuiltInIndicators(kc: any) {
   if (indicatorsRegistered) return;
   indicatorsRegistered = true;
 
-  // VOL — volume histogram colored by candle direction.
+  // VOL — volume histogram colored by candle direction. Candle direction
+  // is baked into the indicator row (the styles callback only gets the
+  // indicator's own result neighbors, not the raw kline).
   kc.registerIndicator({
     name: "VOL",
     shortName: "VOL",
@@ -32,12 +34,9 @@ async function registerBuiltInIndicators(kc: any) {
         type: "bar",
         baseValue: 0,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        styles: (data: any) => {
-          const k = data.current.kLineData;
-          return {
-            color: k && k.close >= k.open ? "#22c55e" : "#ef4444",
-          };
-        },
+        styles: (params: any) => ({
+          color: (params?.data?.current?.up ?? true) ? "#22c55e" : "#ef4444",
+        }),
       },
     ],
     minValue: 0,
@@ -48,7 +47,7 @@ async function registerBuiltInIndicators(kc: any) {
       return dataList.map((k, i) => {
         const vol = k.volume ?? 0;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const row: any = { volume: vol };
+        const row: any = { volume: vol, up: k.close >= k.open };
         [p5, p10, p20].forEach((p) => {
           sums[p] += vol;
           if (i >= p) sums[p] -= dataList[i - p].volume ?? 0;
@@ -70,7 +69,9 @@ async function registerBuiltInIndicators(kc: any) {
       {
         key: "macd", title: "MACD: ", type: "bar", baseValue: 0,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        styles: (data: any) => ({ color: (data.current.indicatorData?.macd ?? 0) >= 0 ? "#22c55e" : "#ef4444" }),
+        styles: (params: any) => ({
+          color: (params?.data?.current?.macd ?? 0) >= 0 ? "#22c55e" : "#ef4444",
+        }),
       },
     ],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
