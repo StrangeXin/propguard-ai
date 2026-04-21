@@ -474,16 +474,9 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
               ))}
             </div>
 
-            {/* Symbol + live price */}
+            {/* Symbol */}
             <div className="flex items-center gap-3">
               <SymbolSelect value={symbol} onChange={setSymbol} />
-              {symbolPrice && (
-                <div className="flex gap-3 text-xs">
-                  <span className="text-green-400">{t.bid}: {symbolPrice.bid}</span>
-                  <span className="text-red-400">{t.ask}: {symbolPrice.ask}</span>
-                  <span className="text-zinc-600">{t.spread}: {(symbolPrice.spread * 100000).toFixed(1)}p</span>
-                </div>
-              )}
             </div>
 
             {/* Inputs */}
@@ -508,17 +501,41 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
               </div>
             </div>
 
-            {/* Buy / Sell buttons */}
-            <div className="flex gap-2">
-              <button onClick={() => submitOrder("buy")} disabled={loading}
-                className="flex-1 py-2.5 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors flex items-center justify-center gap-2">
-                {loading && <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                {loading ? t.placing : <>{t.buy} {symbolPrice ? symbolPrice.ask : ""}</>}
-              </button>
+            {/* Sell (bid) | spread | Buy (ask) — MT5-style quote ladder */}
+            <div className="flex items-stretch gap-0 rounded-lg overflow-hidden">
               <button onClick={() => submitOrder("sell")} disabled={loading}
-                className="flex-1 py-2.5 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white text-sm rounded-lg font-bold transition-colors flex items-center justify-center gap-2">
-                {loading && <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                {loading ? t.placing : <>{t.sell} {symbolPrice ? symbolPrice.bid : ""}</>}
+                className="flex-1 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
+                {loading ? (
+                  <span className="flex items-center gap-2 py-2">
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span className="text-sm font-bold">{t.placing}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-[10px] uppercase tracking-wider opacity-80">{t.sell} · {t.bid}</span>
+                    <span className="text-lg font-mono font-bold tabular-nums">{symbolPrice ? symbolPrice.bid : "—"}</span>
+                  </>
+                )}
+              </button>
+              <div className="flex flex-col items-center justify-center px-3 bg-zinc-800 text-zinc-400 min-w-[56px]">
+                <span className="text-[9px] uppercase tracking-wider text-zinc-500">{t.spread}</span>
+                <span className="text-xs font-mono tabular-nums">
+                  {symbolPrice ? (symbolPrice.spread * 100000).toFixed(1) : "—"}
+                </span>
+              </div>
+              <button onClick={() => submitOrder("buy")} disabled={loading}
+                className="flex-1 py-3 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
+                {loading ? (
+                  <span className="flex items-center gap-2 py-2">
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span className="text-sm font-bold">{t.placing}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-[10px] uppercase tracking-wider opacity-80">{t.buy} · {t.ask}</span>
+                    <span className="text-lg font-mono font-bold tabular-nums">{symbolPrice ? symbolPrice.ask : "—"}</span>
+                  </>
+                )}
               </button>
             </div>
             {msg && (
