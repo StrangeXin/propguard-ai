@@ -327,7 +327,13 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
       if (!chart) return;
       chartInstance.current = chart;
 
-      // Set up data loader
+      // KLineCharts v10 initializes data loading from the active symbol +
+      // period. Set both first, then attach the loader (matching the official
+      // v10 order) so the first init load always has complete context.
+      const p = PERIODS.find((p) => p.value === periodRef.current) || PERIODS[3];
+      chart.setSymbol({ ticker: symbolRef.current });
+      chart.setPeriod({ span: p.span, type: p.type });
+
       chart.setDataLoader({
         getBars: async ({ callback }) => {
           setLoading(true);
@@ -336,20 +342,17 @@ export function KlineChart({ symbol: externalSymbol, onSymbolChange }: { symbol?
               `${API_BASE}/api/kline/${symbolRef.current}?period=${periodRef.current}&count=300`
             );
             const data = await res.json();
+            const bars = Array.isArray(data.bars) ? data.bars : [];
             setDataSource(data.source || "");
-            callback(data.bars || [], false);
+            callback(bars);
           } catch {
-            callback([], false);
+            setDataSource("");
+            callback([]);
           } finally {
             setLoading(false);
           }
         },
       });
-
-      // Set initial symbol and period
-      const p = PERIODS.find((p) => p.value === periodRef.current) || PERIODS[3];
-      chart.setSymbol({ ticker: symbolRef.current });
-      chart.setPeriod({ span: p.span, type: p.type });
 
       // Default indicator — swallow failures so a broken indicator
       // registration never blocks the candle render itself.
