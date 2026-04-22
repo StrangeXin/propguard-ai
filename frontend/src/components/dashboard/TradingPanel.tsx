@@ -6,6 +6,7 @@ import { useAuth } from "@/app/providers";
 import { useLoginGate } from "@/hooks/useLoginGate";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import type { RuleCheckResult } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -110,6 +111,8 @@ const texts: Record<string, Record<string, string>> = {
     trades: "Trades",
     winRate: "Win Rate",
     save: "Save",
+    newsLockTitle: "News Lock",
+    newsLockBlocked: "New orders are blocked while the news restriction is active.",
   },
   zh: {
     title: "交易",
@@ -150,10 +153,20 @@ const texts: Record<string, Record<string, string>> = {
     trades: "交易数",
     winRate: "胜率",
     save: "保存",
+    newsLockTitle: "新闻禁入",
+    newsLockBlocked: "当前新闻限制生效中，暂时禁止新开仓。",
   },
 };
 
-export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbol?: string; onSymbolChange?: (s: string) => void } = {}) {
+export function TradingPanel({
+  symbol: externalSymbol,
+  onSymbolChange,
+  newsRestriction,
+}: {
+  symbol?: string;
+  onSymbolChange?: (s: string) => void;
+  newsRestriction?: RuleCheckResult | null;
+} = {}) {
   const { locale, t: ti18n } = useI18n();
   const { token, logout } = useAuth();
   const { openGate } = useLoginGate();
@@ -224,6 +237,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   // Partial close state
   const [partialPos, setPartialPos] = useState<string | null>(null);
   const [partialVol, setPartialVol] = useState("");
+  const isNewsBlocked = !!newsRestriction && newsRestriction.alert_level !== "safe";
 
   const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
   if (token) authHeaders.Authorization = `Bearer ${token}`;
@@ -370,6 +384,10 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
   const submitOrder = async (side: string) => {
     if (!token) {
       openGate(ti18n("auth.login_to_place_order"));
+      return;
+    }
+    if (isNewsBlocked) {
+      setMsg({ kind: "error", text: newsRestriction?.message || t.newsLockBlocked });
       return;
     }
     // Pre-submit volume validation — catch off-step / out-of-range before
@@ -609,13 +627,35 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
             </div>
 
             {/* Sell (bid) | spread | Buy (ask) — MT5-style quote ladder */}
+            {newsRestriction && (
+              <div
+                className={`text-xs px-3 py-2 rounded border ${
+                  isNewsBlocked
+                    ? "bg-amber-900/30 border-amber-800/50 text-amber-300"
+                    : "bg-zinc-800 border-zinc-700 text-zinc-300"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium uppercase tracking-wider text-[10px]">
+                    {t.newsLockTitle}
+                  </span>
+                  <Badge className={isNewsBlocked ? "bg-amber-900 text-amber-200 text-[10px]" : "bg-zinc-700 text-zinc-300 text-[10px]"}>
+                    {newsRestriction.alert_level.toUpperCase()}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs">{newsRestriction.message}</p>
+                {isNewsBlocked && (
+                  <p className="mt-1 text-[11px] text-amber-200/90">{t.newsLockBlocked}</p>
+                )}
+              </div>
+            )}
             {symbolUnavailable && (
               <div className="text-xs px-3 py-2 rounded bg-amber-900/30 border border-amber-800/50 text-amber-300">
                 {t.symbolUnavailable}
               </div>
             )}
             <div className="flex items-stretch gap-0 rounded-lg overflow-hidden">
-              <button onClick={() => submitOrder("sell")} disabled={loading || !symbolPrice}
+              <button onClick={() => submitOrder("sell")} disabled={loading || !symbolPrice || isNewsBlocked}
                 className="flex-1 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
                 {loading ? (
                   <span className="flex items-center gap-2 py-2">
@@ -635,7 +675,7 @@ export function TradingPanel({ symbol: externalSymbol, onSymbolChange }: { symbo
                   {symbolPrice ? formatSpread(symbolPrice.spread, symbolPrice.digits) : "—"}
                 </span>
               </div>
-              <button onClick={() => submitOrder("buy")} disabled={loading || !symbolPrice}
+              <button onClick={() => submitOrder("buy")} disabled={loading || !symbolPrice || isNewsBlocked}
                 className="flex-1 py-3 bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white transition-colors flex flex-col items-center justify-center gap-0.5">
                 {loading ? (
                   <span className="flex items-center gap-2 py-2">

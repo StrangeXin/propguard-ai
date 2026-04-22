@@ -4,8 +4,10 @@ account state against them in real-time.
 """
 
 import json
+import re
 from pathlib import Path
-from datetime import datetime, timezone, date
+from collections import defaultdict
+from datetime import datetime, timezone, date, timedelta
 
 from app.models.account import (
     AccountState,
@@ -14,6 +16,45 @@ from app.models.account import (
     RuleCheckResult,
 )
 from app.config import get_settings
+
+
+def aggregate_daily_pnl(closed_trades: list) -> dict[date, float]:
+    """Sum closed-trade P&L by the calendar date of `closed_at`.
+
+    Input: list of `ClosedTrade` (or any object with `.pnl` + `.closed_at`).
+    Output: dict keyed by date → net realized P&L for that day.
+    Trades without closed_at are skipped.
+    """
+    by_day: dict[date, float] = defaultdict(float)
+    for trade in closed_trades or []:
+        closed_at = getattr(trade, "closed_at", None)
+        pnl = getattr(trade, "pnl", 0) or 0
+        if closed_at is None:
+            continue
+        try:
+            d = closed_at.date() if hasattr(closed_at, "date") else None
+        except Exception:
+            d = None
+        if d is None:
+            continue
+        by_day[d] += float(pnl)
+    return dict(by_day)
+
+
+def best_day_ratio(daily_pnl: dict[date, float]) -> tuple[float, float, float]:
+    """Compute (best_day_profit, total_profit, ratio_pct) from daily P&L.
+
+    ratio_pct is the best day's profit as a percentage of the sum of all
+    positive days' profit — matches how FTMO, TopStep, Maven specify the rule.
+    Returns (0, 0, 0) when there are no profitable days.
+    """
+    positive_days = {d: p for d, p in daily_pnl.items() if p > 0}
+    if not positive_days:
+        return 0.0, 0.0, 0.0
+    best_day = max(positive_days.values())
+    total_positive = sum(positive_days.values())
+    ratio = (best_day / total_positive * 100) if total_positive > 0 else 0.0
+    return round(best_day, 2), round(total_positive, 2), round(ratio, 1)
 
 # Freshness thresholds for prop firm rule sets (days since effective_date)
 RULE_FRESHNESS_WARNING_DAYS = 90  # surface as warning above this
@@ -337,7 +378,7 @@ def check_min_trading_days(
 def check_news_restriction(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
-    """Check if currently in a news restriction period."""
+    """Check whether positions were opened during a high-impact news window."""
     if not rule.get("value"):
         return RuleCheckResult(
             rule_type="news_restriction",
@@ -347,26 +388,118 @@ def check_news_restriction(
             message=f"{firm_rules['firm_name']} has no news trading restrictions.",
         )
 
-    # Check if any position was opened recently (potential news trade)
-    from datetime import datetime, timedelta, timezone
-    now = datetime.now(timezone.utc)
-    recent_positions = []
-    for p in account.open_positions:
-        try:
-            opened = p.opened_at.replace(tzinfo=timezone.utc) if p.opened_at.tzinfo is None else p.opened_at
-            if (now - opened).total_seconds() < 300:
-                recent_positions.append(p)
-        except Exception:
-            pass
-
-    if recent_positions:
+    if not account.open_positions:
         return RuleCheckResult(
             rule_type="news_restriction",
             rule_description=rule.get("description", "News trading restriction"),
-            current_value=float(len(recent_positions)),
-            limit_value=0, remaining=0, remaining_pct=50,
+            current_value=0,
+            limit_value=0,
+            remaining=999999,
+            remaining_pct=100,
+            alert_level=AlertLevel.SAFE,
+            message="No open positions to screen against high-impact news windows.",
+        )
+
+    economic_events = firm_rules.get("_economic_events") or []
+    if not economic_events:
+        return RuleCheckResult(
+            rule_type="news_restriction",
+            rule_description=rule.get("description", "News trading restriction"),
+            current_value=0,
+            limit_value=0,
+            remaining=999999,
+            remaining_pct=100,
+            alert_level=AlertLevel.SAFE,
+            message="Economic calendar unavailable, so high-impact news windows could not be verified right now.",
+        )
+
+    now = datetime.now(timezone.utc)
+
+    description = (rule.get("description") or "").lower()
+    match = re.search(r"(\d+)\s*min", description)
+    window_minutes = int(match.group(1)) if match else 2
+    window = timedelta(minutes=window_minutes)
+
+    def normalize_ts(value) -> datetime | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            ts = value
+        else:
+            try:
+                ts = datetime.fromisoformat(str(value))
+            except ValueError:
+                return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc)
+
+    def position_currencies(symbol: str) -> set[str]:
+        upper = symbol.upper()
+        supported = {"USD", "EUR", "GBP", "JPY", "CAD", "AUD", "NZD", "CHF", "CNY"}
+        return {code for code in supported if code in upper}
+
+    breaches: list[str] = []
+    active_windows: list[str] = []
+
+    for p in account.open_positions:
+        opened_at = normalize_ts(getattr(p, "opened_at", None))
+        if opened_at is None:
+            continue
+        currencies = position_currencies(p.symbol)
+        if not currencies:
+            continue
+
+        for event in economic_events:
+            if str(event.get("impact", "")).title() != "High":
+                continue
+            event_country = str(event.get("country") or "").upper()
+            if event_country not in currencies:
+                continue
+            event_time = normalize_ts(event.get("date"))
+            if event_time is None:
+                continue
+
+            title = str(event.get("title") or event_country)
+            window_start = event_time - window
+            window_end = event_time + window
+            if window_start <= opened_at <= window_end:
+                breaches.append(
+                    f"{p.symbol} opened at {opened_at.strftime('%H:%M UTC')} during {event_country} {title}"
+                )
+            elif window_start <= now <= window_end:
+                active_windows.append(
+                    f"{event_country} {title} until {window_end.strftime('%H:%M UTC')}"
+                )
+
+    if breaches:
+        return RuleCheckResult(
+            rule_type="news_restriction",
+            rule_description=rule.get("description", "News trading restriction"),
+            current_value=float(len(breaches)),
+            limit_value=0, remaining=0, remaining_pct=0,
             alert_level=AlertLevel.WARNING,
-            message=f"Warning: {len(recent_positions)} position(s) opened recently. Check economic calendar for high-impact news events.",
+            message=(
+                f"Warning: {len(breaches)} position(s) were opened inside the "
+                f"{window_minutes}-minute high-impact news window: "
+                + "; ".join(breaches[:2])
+            ),
+        )
+
+    if active_windows:
+        unique_windows = list(dict.fromkeys(active_windows))
+        return RuleCheckResult(
+            rule_type="news_restriction",
+            rule_description=rule.get("description", "News trading restriction"),
+            current_value=float(len(unique_windows)),
+            limit_value=0,
+            remaining=0,
+            remaining_pct=0,
+            alert_level=AlertLevel.WARNING,
+            message=(
+                "High-impact news lock active for current exposure: "
+                + "; ".join(unique_windows[:2])
+            ),
         )
 
     return RuleCheckResult(
@@ -374,7 +507,7 @@ def check_news_restriction(
         rule_description=rule.get("description", "News trading restriction active"),
         current_value=0, limit_value=0, remaining=999999, remaining_pct=100,
         alert_level=AlertLevel.SAFE,
-        message="No recent trades near news events. Check calendar before opening positions.",
+        message="No open positions were detected inside current high-impact news windows.",
     )
 
 
@@ -475,37 +608,127 @@ def check_leverage(
     )
 
 
+def _best_day_check(
+    rule: dict, firm_rules: dict, rule_type: str
+) -> RuleCheckResult:
+    """Shared implementation for best_day_rule / consistency-percent variants.
+    Uses daily_pnl_history plumbed through firm_rules when available; falls
+    back to an informational card when no trade history is present."""
+    threshold = rule.get("value")
+    description = rule.get("description") or "Best-day / consistency requirement"
+    daily_pnl = firm_rules.get("_daily_pnl_history") or {}
+
+    if not daily_pnl or threshold is None:
+        return RuleCheckResult(
+            rule_type=rule_type,
+            rule_description=description,
+            current_value=0,
+            limit_value=float(threshold) if threshold is not None else 0,
+            remaining=999999,
+            remaining_pct=100,
+            alert_level=AlertLevel.SAFE,
+            message=(
+                f"Best day / total profit must stay ≤ {threshold}%. "
+                "No closed trades yet — start trading to activate live tracking."
+                if threshold is not None else description
+            ),
+        )
+
+    best_day, total_positive, ratio = best_day_ratio(daily_pnl)
+    limit = float(threshold)
+
+    if ratio == 0:
+        message = (
+            f"Best day / total profit must stay ≤ {limit:.0f}%. "
+            "No profitable days yet."
+        )
+        alert_level = AlertLevel.SAFE
+    elif ratio > limit:
+        alert_level = AlertLevel.BREACHED
+        message = (
+            f"Consistency breached: best day ${best_day:,.2f} is {ratio:.1f}% "
+            f"of ${total_positive:,.2f} total profit (cap {limit:.0f}%)."
+        )
+    elif ratio > limit * 0.9:
+        alert_level = AlertLevel.DANGER
+        message = (
+            f"Consistency at risk: best day {ratio:.1f}% of total profit "
+            f"(cap {limit:.0f}%)."
+        )
+    elif ratio > limit * 0.75:
+        alert_level = AlertLevel.WARNING
+        message = (
+            f"Consistency OK: best day {ratio:.1f}% of total profit "
+            f"(cap {limit:.0f}%)."
+        )
+    else:
+        alert_level = AlertLevel.SAFE
+        message = (
+            f"Consistency OK: best day {ratio:.1f}% of total profit "
+            f"(cap {limit:.0f}%)."
+        )
+
+    return RuleCheckResult(
+        rule_type=rule_type,
+        rule_description=description,
+        current_value=ratio,
+        limit_value=limit,
+        remaining=max(limit - ratio, 0),
+        remaining_pct=max(100 - (ratio / limit * 100), 0) if limit > 0 else 100,
+        alert_level=alert_level,
+        message=message,
+    )
+
+
 def check_consistency(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
-    """Consistency rule: e.g. best-day profit cannot exceed X% of total profit,
-    or a minimum number of profitable days. We don't have per-day P&L history
-    server-side, so this is rendered as an informational reminder rather than
-    an active check. If the rule carries a numeric threshold we surface it.
+    """Consistency rule. Two shapes:
+
+    1. Best-day percent (FTMO, TopStep): single day ≤ N% of total profit.
+       Uses closed-trade history when available, else informational card.
+    2. Minimum profitable days (Maven): at least N days with > 0 P&L.
+       Always active once daily_pnl_history is plumbed in.
     """
     threshold = rule.get("value")
     unit = rule.get("unit", "")
     description = rule.get("description") or "Consistency requirement"
-
-    if threshold is None:
-        message = f"Consistency: {description}"
-    elif "profitable_days" in str(unit) or "profitable_days" in description.lower():
-        message = f"Consistency: at least {threshold} profitable day(s) required. Track manually."
-    elif "percent" in str(unit):
-        message = f"Consistency: single-day profits must stay ≤ {threshold}% of total profits."
-    else:
-        message = f"Consistency: {description}"
-
-    return RuleCheckResult(
-        rule_type="consistency",
-        rule_description=description,
-        current_value=0,
-        limit_value=float(threshold) if threshold is not None else 0,
-        remaining=999999,
-        remaining_pct=100,
-        alert_level=AlertLevel.SAFE,
-        message=message,
+    is_profitable_days = (
+        "profitable_days" in str(unit)
+        or "profitable_days" in description.lower()
+        or "profitable day" in description.lower()
     )
+
+    daily_pnl = firm_rules.get("_daily_pnl_history") or {}
+
+    if is_profitable_days:
+        if threshold is None:
+            return None
+        positive_days = sum(1 for p in daily_pnl.values() if p > 0)
+        required = int(threshold)
+        remaining = max(required - positive_days, 0)
+        if positive_days >= required:
+            alert_level = AlertLevel.SAFE
+            message = f"Consistency: {positive_days} / {required} profitable days ✓"
+        elif positive_days >= required - 1:
+            alert_level = AlertLevel.WARNING
+            message = f"Consistency: {positive_days} / {required} profitable days — {remaining} more needed."
+        else:
+            alert_level = AlertLevel.SAFE
+            message = f"Consistency: {positive_days} / {required} profitable days so far."
+        return RuleCheckResult(
+            rule_type="consistency",
+            rule_description=description,
+            current_value=float(positive_days),
+            limit_value=float(required),
+            remaining=float(remaining),
+            remaining_pct=(positive_days / required * 100) if required > 0 else 100,
+            alert_level=alert_level,
+            message=message,
+        )
+
+    # Best-day percent variant — delegate
+    return _best_day_check(rule, firm_rules, rule_type="consistency")
 
 
 def check_time_limit(
@@ -588,22 +811,11 @@ def check_profit_target(
 def check_best_day_rule(
     account: AccountState, rule: dict, firm_rules: dict
 ) -> RuleCheckResult | None:
-    """Check best day rule — single day profit cannot exceed X% of total profit."""
-    limit_pct = rule.get("value")
-    if limit_pct is None:
+    """Best-day rule (FTMO legacy key). Single-day profit ≤ N% of total profit.
+    Uses closed-trade history when available, else informational card."""
+    if rule.get("value") is None:
         return None
-
-    # We don't have per-day P&L history, so show the rule as informational
-    return RuleCheckResult(
-        rule_type="best_day_rule",
-        rule_description=rule.get("description", f"Best day profit cannot exceed {limit_pct}% of total profit"),
-        current_value=0,
-        limit_value=float(limit_pct),
-        remaining=999999,
-        remaining_pct=100,
-        alert_level=AlertLevel.SAFE,
-        message=f"Best day rule: No single day can exceed {limit_pct}% of total profit.",
-    )
+    return _best_day_check(rule, firm_rules, rule_type="best_day_rule")
 
 
 # Map rule types to checker functions. `best_day_rule` is a legacy alias kept
@@ -624,13 +836,32 @@ RULE_CHECKERS = {
 }
 
 
-def evaluate_compliance(account: AccountState, evaluation_type: str | None = None) -> ComplianceReport:
+def evaluate_compliance(
+    account: AccountState,
+    evaluation_type: str | None = None,
+    closed_trades: list | None = None,
+    economic_events: list[dict] | None = None,
+) -> ComplianceReport:
     """
     Run all applicable rule checks for an account and return a compliance report.
+
     evaluation_type: "1-step" or "2-step" for firms with multiple evaluation types.
+    closed_trades: optional list of ClosedTrade (or equivalent) to power the
+        best-day-rule / consistency checkers. If omitted, those rules render
+        as informational cards (unchanged behavior).
     """
     firm_rules = load_firm_rules(account.firm_name)
     checks: list[RuleCheckResult] = []
+
+    # Plumb daily-aggregated P&L through firm_rules as a side channel so the
+    # existing checker signatures don't need to change.
+    if closed_trades:
+        firm_rules = dict(firm_rules)
+        firm_rules["_daily_pnl_history"] = aggregate_daily_pnl(closed_trades)
+    if economic_events:
+        if "_daily_pnl_history" not in firm_rules:
+            firm_rules = dict(firm_rules)
+        firm_rules["_economic_events"] = economic_events
 
     # Get rules — support both "rules" (flat) and "rules_by_evaluation" (per type)
     if "rules_by_evaluation" in firm_rules:

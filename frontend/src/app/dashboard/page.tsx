@@ -62,6 +62,7 @@ export default function Dashboard() {
     accountSize,
     evaluationType: evaluationType || undefined,
   });
+  const newsRestriction = compliance?.checks.find((check) => check.rule_type === "news_restriction") ?? null;
 
   // authLoading is only true during initial localStorage check; don't block
   // unauthenticated visitors (they land on the shared MetaApi demo).
@@ -195,7 +196,11 @@ export default function Dashboard() {
           <KlineChart symbol={selectedSymbol} onSymbolChange={setSelectedSymbol} />
 
           <div id="trading-panel">
-            <TradingPanel symbol={selectedSymbol} onSymbolChange={setSelectedSymbol} />
+            <TradingPanel
+              symbol={selectedSymbol}
+              onSymbolChange={setSelectedSymbol}
+              newsRestriction={newsRestriction}
+            />
           </div>
 
           <Separator className="bg-zinc-800" />

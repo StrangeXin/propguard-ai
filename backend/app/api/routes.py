@@ -33,6 +33,7 @@ from app.rules.engine import evaluate_compliance, list_available_firms, load_fir
 from app.services.trading_stats import calculate_challenge_progress
 from app.services.broker import BrokerAPIClient
 from app.services.alerts import process_compliance_alerts
+from app.services.economic_calendar import get_high_impact_events
 from app.services.telegram_bot import (
     handle_telegram_message,
     get_recent_signals,
@@ -206,7 +207,13 @@ async def get_firm_rules(firm_name: str):
 
 
 @router.get("/api/accounts/{account_id}/compliance")
-async def get_compliance(account_id: str, firm_name: str, account_size: int, evaluation_type: str | None = None):
+async def get_compliance(
+    account_id: str,
+    firm_name: str,
+    account_size: int,
+    evaluation_type: str | None = None,
+    owner: Owner = Depends(get_owner),
+):
     """
     Get current compliance status for an account.
     This is the core endpoint — fetches account state from broker API,
@@ -231,7 +238,28 @@ async def get_compliance(account_id: str, firm_name: str, account_size: int, eva
                 broker_connected=False,
             )
 
-        report = evaluate_compliance(account_state, evaluation_type)
+        # Fetch recent closed trades so consistency / best-day checkers can
+        # evaluate against actual daily P&L. Best-effort — if the broker call
+        # fails, rules still render as informational cards (original behavior).
+        closed_trades: list = []
+        try:
+            broker_impl = get_broker(owner)
+            closed_trades = await broker_impl.history(limit=500)
+        except Exception:
+            closed_trades = []
+
+        economic_events: list[dict] = []
+        try:
+            economic_events = await get_high_impact_events()
+        except Exception:
+            economic_events = []
+
+        report = evaluate_compliance(
+            account_state,
+            evaluation_type,
+            closed_trades=closed_trades or None,
+            economic_events=economic_events or None,
+        )
 
         # Thread rule freshness into the response so the dashboard can show a
         # banner when we're evaluating against rules that haven't been re-verified
@@ -303,7 +331,17 @@ async def websocket_compliance(websocket: WebSocket, account_id: str, firm_name:
                         broker_connected=False,
                     )
 
-                report = evaluate_compliance(account_state, evaluation_type)
+                economic_events: list[dict] = []
+                try:
+                    economic_events = await get_high_impact_events()
+                except Exception:
+                    economic_events = []
+
+                report = evaluate_compliance(
+                    account_state,
+                    evaluation_type,
+                    economic_events=economic_events or None,
+                )
                 payload = json.dumps({
                     "type": "compliance_update",
                     "account": account_state.model_dump(),

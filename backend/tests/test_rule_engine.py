@@ -1,13 +1,14 @@
 """Tests for the PropGuard rule engine."""
 
 import pytest
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from app.models.account import AccountState, AlertLevel, Position
 from app.rules.engine import (
     evaluate_compliance,
     load_firm_rules,
     list_available_firms,
     _compute_freshness,
+    check_news_restriction,
 )
 
 
@@ -309,3 +310,225 @@ class TestConsistencyChecker:
         result = check_consistency(account, rule, {})
         assert result is not None
         assert "3 profitable day" in result.message
+
+
+class TestConsistencyWithHistory:
+    """End-to-end: when closed trades are passed to evaluate_compliance, the
+    best-day / consistency checker evaluates against real daily P&L instead
+    of rendering an informational card."""
+
+    def _trade(self, pnl: float, closed_at: datetime):
+        """Lightweight trade stub — only .pnl and .closed_at are read."""
+        class _T:
+            pass
+        t = _T()
+        t.pnl = pnl
+        t.closed_at = closed_at
+        return t
+
+    def test_aggregate_daily_pnl(self):
+        from app.rules.engine import aggregate_daily_pnl
+        from datetime import datetime
+        trades = [
+            self._trade(100, datetime(2026, 4, 20, 10, 0)),
+            self._trade(50, datetime(2026, 4, 20, 15, 0)),
+            self._trade(-30, datetime(2026, 4, 21, 11, 0)),
+            self._trade(200, datetime(2026, 4, 22, 9, 0)),
+        ]
+        by_day = aggregate_daily_pnl(trades)
+        assert by_day[datetime(2026, 4, 20).date()] == 150
+        assert by_day[datetime(2026, 4, 21).date()] == -30
+        assert by_day[datetime(2026, 4, 22).date()] == 200
+
+    def test_best_day_ratio_math(self):
+        from app.rules.engine import best_day_ratio
+        from datetime import date
+        # 3 profitable days: $150, $200, $50. Best = $200, total = $400.
+        # $200 / $400 = 50%.
+        daily = {
+            date(2026, 4, 20): 150,
+            date(2026, 4, 21): -30,  # negative days excluded
+            date(2026, 4, 22): 200,
+            date(2026, 4, 23): 50,
+        }
+        best, total, ratio = best_day_ratio(daily)
+        assert best == 200
+        assert total == 400
+        assert ratio == 50.0
+
+    def test_ftmo_best_day_breached_with_trades(self):
+        """FTMO 1-Step: 50% best-day cap. $800 day among $1K total = 80% = BREACHED."""
+        account = make_account(firm_name="ftmo", account_size=100000, total_pnl=1000)
+        trades = [
+            self._trade(800, datetime(2026, 4, 20, 10, 0)),
+            self._trade(100, datetime(2026, 4, 21, 10, 0)),
+            self._trade(100, datetime(2026, 4, 22, 10, 0)),
+        ]
+        report = evaluate_compliance(
+            account, evaluation_type="1-step", closed_trades=trades
+        )
+        best_day = next(
+            (c for c in report.checks if c.rule_type == "best_day_rule"), None
+        )
+        assert best_day is not None
+        assert best_day.alert_level == AlertLevel.BREACHED
+        assert "80" in best_day.message
+
+    def test_ftmo_best_day_safe_with_trades(self):
+        """FTMO 1-Step: $300 day among $1200 total = 25% = SAFE (far under 50%)."""
+        account = make_account(firm_name="ftmo", account_size=100000, total_pnl=1200)
+        trades = [
+            self._trade(300, datetime(2026, 4, 20, 10, 0)),
+            self._trade(300, datetime(2026, 4, 21, 10, 0)),
+            self._trade(300, datetime(2026, 4, 22, 10, 0)),
+            self._trade(300, datetime(2026, 4, 23, 10, 0)),
+        ]
+        report = evaluate_compliance(
+            account, evaluation_type="1-step", closed_trades=trades
+        )
+        best_day = next(
+            (c for c in report.checks if c.rule_type == "best_day_rule"), None
+        )
+        assert best_day is not None
+        assert best_day.alert_level == AlertLevel.SAFE
+        assert best_day.current_value == 25.0
+
+    def test_no_trades_falls_back_to_informational(self):
+        """Without trades, best-day card stays informational (old behavior preserved)."""
+        account = make_account(firm_name="ftmo", account_size=100000, total_pnl=1000)
+        report = evaluate_compliance(account, evaluation_type="1-step")
+        best_day = next(
+            (c for c in report.checks if c.rule_type == "best_day_rule"), None
+        )
+        assert best_day is not None
+        assert best_day.alert_level == AlertLevel.SAFE
+        assert "No closed trades yet" in best_day.message
+
+
+class TestNewsRestriction:
+    def test_news_restriction_disabled_firm(self):
+        account = make_account(firm_name="cryptofundtrader", account_size=100000)
+        report = evaluate_compliance(account)
+        news_check = next(c for c in report.checks if c.rule_type == "news_restriction")
+        assert news_check.alert_level == AlertLevel.SAFE
+        assert "no news trading restrictions" in news_check.message.lower()
+
+    def test_position_opened_inside_high_impact_window_warns(self):
+        now = datetime.now(timezone.utc)
+        account = make_account(
+            firm_name="ftmo",
+            account_size=100000,
+            positions=[
+                Position(
+                    symbol="EURUSD",
+                    side="long",
+                    size=1.0,
+                    entry_price=1.08,
+                    current_price=1.08,
+                    unrealized_pnl=0,
+                    opened_at=now,
+                )
+            ],
+        )
+        rule = {
+            "type": "news_restriction",
+            "value": True,
+            "description": "Standard accounts: no trading 2 min before/after high-impact news.",
+        }
+        result = check_news_restriction(
+            account,
+            rule,
+            {
+                "_economic_events": [
+                    {
+                        "title": "ECB Rate Decision",
+                        "country": "EUR",
+                        "impact": "High",
+                        "date": now,
+                    }
+                ]
+            },
+        )
+        assert result is not None
+        assert result.alert_level == AlertLevel.WARNING
+        assert "opened inside the 2-minute" in result.message
+
+    def test_active_news_window_warns_for_exposed_symbol(self):
+        now = datetime.now(timezone.utc)
+        account = make_account(
+            firm_name="ftmo",
+            account_size=100000,
+            positions=[
+                Position(
+                    symbol="GBPUSD",
+                    side="long",
+                    size=1.0,
+                    entry_price=1.27,
+                    current_price=1.27,
+                    unrealized_pnl=0,
+                    opened_at=now - timedelta(minutes=10),
+                )
+            ],
+        )
+        rule = {
+            "type": "news_restriction",
+            "value": True,
+            "description": "Standard accounts: no trading 2 min before/after high-impact news.",
+        }
+        result = check_news_restriction(
+            account,
+            rule,
+            {
+                "_economic_events": [
+                    {
+                        "title": "CPI y/y",
+                        "country": "GBP",
+                        "impact": "High",
+                        "date": now + timedelta(minutes=1),
+                    }
+                ]
+            },
+        )
+        assert result is not None
+        assert result.alert_level == AlertLevel.WARNING
+        assert "High-impact news lock active" in result.message
+
+    def test_unrelated_currency_event_stays_safe(self):
+        now = datetime.now(timezone.utc)
+        account = make_account(
+            firm_name="ftmo",
+            account_size=100000,
+            positions=[
+                Position(
+                    symbol="XAUUSD",
+                    side="long",
+                    size=1.0,
+                    entry_price=3300,
+                    current_price=3300,
+                    unrealized_pnl=0,
+                    opened_at=now,
+                )
+            ],
+        )
+        rule = {
+            "type": "news_restriction",
+            "value": True,
+            "description": "Standard accounts: no trading 2 min before/after high-impact news.",
+        }
+        result = check_news_restriction(
+            account,
+            rule,
+            {
+                "_economic_events": [
+                    {
+                        "title": "BOE Testimony",
+                        "country": "GBP",
+                        "impact": "High",
+                        "date": now,
+                    }
+                ]
+            },
+        )
+        assert result is not None
+        assert result.alert_level == AlertLevel.SAFE
+        assert "inside current high-impact news windows" in result.message

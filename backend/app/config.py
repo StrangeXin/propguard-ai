@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Twelve Data (free forex/stock OHLCV, get key at twelvedata.com)
     twelvedata_api_key: str = ""
 
+    # Economic calendar (best-effort feed for news-restriction checks)
+    economic_calendar_url: str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+    economic_calendar_timeout_seconds: float = 10.0
+    economic_calendar_cache_ttl_seconds: float = 300.0
+
     # WebSocket
     ws_reconnect_base_delay: float = 1.0
     ws_reconnect_max_delay: float = 30.0
